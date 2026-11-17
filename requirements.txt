@@ -1,0 +1,21 @@
+# Python 3.14. PyTorch só para CPU:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+#   pip install -r requirements.txt
+cdsapi==0.7.7
+h5netcdf==1.8.2
+h5py==3.16.0
+matplotlib==3.11.2
+numpy==2.5.4
+pandas==3.1.0
+pyarrow==26.0.0
+pytest==9.2.0
+python-dotenv==1.2.4
+requests==2.34.2
+scikit-learn==1.9.1
+scipy==1.18.1
+xarray==2026.9.0
+xgboost==3.4.1
+eccodes==2.50.1
+eccodeslib==2.50.0.34
+findlibs==0.1.5
+earthengine-api==1.7.52
