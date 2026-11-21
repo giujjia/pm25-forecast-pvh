@@ -25,10 +25,11 @@ Usage:
 import csv
 import hashlib
 import math
+import multiprocessing as mp
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -154,8 +155,27 @@ def ler_imagem(url, janelas, sat, bloco, sessao=None):
     return aod, dqf, lat, lon, cru.transferidos, cru.pedidos
 
 
-def dia(d, janelas, bloco):
-    s = sessao_com_retentativas()
+_janelas_proc = Janelas()
+_sessao_proc = None
+
+
+def _gravar_linha_manifesto(linha):
+    with _trava:
+        novo = not MANIFESTO.exists()
+        with open(MANIFESTO, "a", newline="") as f:
+            w = csv.writer(f)
+            if novo:
+                w.writerow(["dia", "imagens", "satelites", "horas_sem_arquivo", "bytes_transferidos",
+                            "segundos", "arquivo", "sha256"])
+            w.writerow(linha)
+
+
+def dia(d, janelas=None, bloco=32 << 10, gravar_manifesto=True):
+    global _sessao_proc
+    if _sessao_proc is None:
+        _sessao_proc = sessao_com_retentativas()
+    s = _sessao_proc
+    janelas = janelas or _janelas_proc
     t0 = time.perf_counter()
     imagens, total, horas_vazias = [], 0, []
     for h in HORAS:
@@ -193,17 +213,13 @@ def dia(d, janelas, bloco):
                                                        "dqf": {"zlib": True, "complevel": 4}})
     parcial.rename(destino)
     sha = hashlib.sha256(destino.read_bytes()).hexdigest()
-    with _trava:
-        novo = not MANIFESTO.exists()
-        with open(MANIFESTO, "a", newline="") as f:
-            w = csv.writer(f)
-            if novo:
-                w.writerow(["dia", "imagens", "satelites", "horas_sem_arquivo", "bytes_transferidos",
-                            "segundos", "arquivo", "sha256"])
-            w.writerow([d.isoformat(), len(imagens), " ".join(sorted({i[1] for i in imagens})),
-                        " ".join(map(str, horas_vazias)), total, f"{time.perf_counter() - t0:.0f}",
-                        str(destino.relative_to(RAW.parent)), sha])
-    return d, len(imagens), horas_vazias, total
+    linha = [d.isoformat(), len(imagens), " ".join(sorted({i[1] for i in imagens})),
+             " ".join(map(str, horas_vazias)), total, f"{time.perf_counter() - t0:.0f}",
+             str(destino.relative_to(RAW.parent)), sha]
+    if gravar_manifesto:
+        _gravar_linha_manifesto(linha)
+        return d, len(imagens), horas_vazias, total
+    return d, len(imagens), horas_vazias, total, linha
 
 
 def alvo(d):
@@ -231,24 +247,25 @@ def teste(dia_iso, hora, bloco_kb=256):
 def baixar(ini, fim, trabalhadores, bloco=32 << 10):  # 32 KB: ~0.5 MB per image
     a, b = date.fromisoformat(ini), date.fromisoformat(fim)
     faltam = [a + timedelta(days=i) for i in range((b - a).days + 1) if not alvo(a + timedelta(days=i)).exists()]
-    print(f"{len(faltam)} dias a baixar de {ini} a {fim}, {trabalhadores} em paralelo", flush=True)
-    janelas = Janelas()
+    print(f"{len(faltam)} dias a baixar de {ini} a {fim}, {trabalhadores} processos em paralelo", flush=True)
     t0, feitos, total, erros = time.perf_counter(), 0, 0, 0
-    with ThreadPoolExecutor(trabalhadores) as ex:
-        futuros = {ex.submit(dia, d, janelas, bloco): d for d in faltam}
+    ctx = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else None
+    with ProcessPoolExecutor(trabalhadores, mp_context=ctx) as ex:
+        futuros = {ex.submit(dia, d, None, bloco, False): d for d in faltam}
         for fu in as_completed(futuros):
             d = futuros[fu]
             try:
-                _, n_img, vazias, n = fu.result()
+                _, n_img, vazias, n, linha = fu.result()
             except Exception as e:
                 erros += 1
                 print(f"{d}: ERRO {str(e)[:300]}", flush=True)
                 continue
+            _gravar_linha_manifesto(linha)
             feitos += 1
             total += n
-            if vazias or feitos % 20 == 0 or feitos == len(faltam):
+            if vazias or feitos <= 5 or feitos % 5 == 0 or feitos == len(faltam):
                 print(f"{d}: {n_img} imagens{' (horas sem arquivo: ' + str(vazias) + ')' if vazias else ''} | "
-                      f"{feitos}/{len(faltam)} em {(time.perf_counter() - t0) / 60:.0f} min, "
+                      f"{feitos}/{len(faltam)} em {(time.perf_counter() - t0) / 60:.1f} min, "
                       f"{total / 1e9:.1f} GB", flush=True)
     print(f"fim: {feitos} dias gravados, {erros} com erro (rodar de novo retoma só os que faltam)", flush=True)
     if erros:

@@ -227,3 +227,140 @@ def test_mascara_estatica_e_dias_de_falha_do_noaa20():
     falhas = features.dias_falha_firms(focos, pd.date_range("2023-07-18", "2023-07-20"), satelite="N20")
     assert [str(d) for d in falhas] == ["2023-07-19", "2023-07-20"]  # no NOAA-20 on those days
     assert features.SATELITES_FIRMS_DECIDIDOS == ("N20",) and features.CONFIANCAS_FIRMS_DECIDIDAS is None
+
+
+# 7. Target table (T12): local day and 2024 lock
+
+def test_dia_local_da_hora_rotulada_pelo_fim():
+    import alvo
+    t = pd.Series(pd.to_datetime(["2023-08-15 05:00", "2023-08-16 04:00", "2023-08-16 05:00"], utc=True))
+    d = alvo.dia_local(t)
+    # 05 UTC covers 00–01 local of 15/08; 04 UTC of 16/08 covers 23–24 local of 15/08; 05 UTC of 16/08 is already 16/08
+    assert list(d.dt.strftime("%Y-%m-%d")) == ["2023-08-15", "2023-08-15", "2023-08-16"]
+
+
+def test_alvo_nao_abre_2024_sem_pre_registro():
+    import alvo
+    with pytest.raises(SystemExit, match="pré-registro"):
+        alvo.construir(ate_ano=2024)
+
+
+# 8. FIRMS fire windows (T18): available at t, outage as NaN, transported wind
+
+def _horario_sintetico(horas, hora_det, valor=10.0):
+    import entradas
+    cols = [entradas.nome_col(a, s) for a in entradas.NOMES_ANEIS for s in range(entradas.N_SETORES)]
+    h = pd.DataFrame(0.0, index=horas, columns=cols)
+    h.loc[hora_det, entradas.nome_col("a0_50", 0)] = valor
+    return h
+
+
+def test_frp_24h_so_entra_depois_de_publicado():
+    import entradas
+    horas = pd.date_range("2023-08-10 01:00", "2023-08-16 00:00", freq="h", tz="UTC")
+    det = pd.Timestamp("2023-08-14 05:00", tz="UTC")  # detection in (04:00, 05:00]
+    f = entradas.janelas_fogo(_horario_sintetico(horas, det), [], horas)
+    c = entradas.nome_col("a0_50", 0)
+    assert f.loc[det + pd.Timedelta(hours=2), c] == 0.0      # t = 07 UTC: not published yet
+    assert f.loc[det + pd.Timedelta(hours=3), c] == 10.0     # t = 08 UTC: published (05 + 3 h)
+    assert f.loc[det + pd.Timedelta(hours=26), c] == 10.0    # last hour of the 24 h window
+    assert f.loc[det + pd.Timedelta(hours=27), c] == 0.0
+    d = entradas.nome_col("a0_50", 0, "_d24_48")
+    assert f.loc[det + pd.Timedelta(hours=27), d] == 10.0
+
+
+def test_falha_do_noaa20_vira_ausente_e_nao_zero():
+    import datetime as dt
+    import entradas
+    horas = pd.date_range("2023-08-10 01:00", "2023-08-16 00:00", freq="h", tz="UTC")
+    f = entradas.janelas_fogo(_horario_sintetico(horas, horas[100]), [dt.date(2023, 8, 13)], horas)
+    c = entradas.nome_col("a0_50", 0)
+    t = pd.Timestamp("2023-08-13 12:00", tz="UTC")
+    assert np.isnan(f.loc[t, c]) and f.loc[t, "falha_firms_24h"] == 1
+    t_ok = pd.Timestamp("2023-08-15 06:00", tz="UTC")  # window (08-14 03:00, 08-15 03:00] does not touch 13/08
+    assert not np.isnan(f.loc[t_ok, c]) and f.loc[t_ok, "falha_firms_24h"] == 0
+
+
+def test_frp_transportado_usa_so_vento_do_setor_para_o_sensor():
+    import entradas
+    horas = pd.date_range("2023-08-10 01:00", periods=2, freq="h", tz="UTC")
+    cols = [entradas.nome_col(a, s) for a in entradas.NOMES_ANEIS for s in range(entradas.N_SETORES)]
+    fogo = pd.DataFrame(0.0, index=horas, columns=cols)
+    fogo[entradas.nome_col("a150_300", 4)] = 100.0  # fire to the south (sector 180–225°)
+    # wind blowing to the north (v > 0) carries smoke from the south to the sensor; to the south, it does not
+    tr = entradas.frp_transportado(fogo, np.array([0.0, 0.0]), np.array([5.0, -5.0]))
+    assert tr[0] > 0 and tr[1] == 0.0
+
+
+# 9. Input selection (T20b): 48 h target after t and 24 h history up to t, without joining years
+
+def test_pares_emissao_alvo_depois_de_t_e_historico_ate_t():
+    horas = pd.date_range("2021-10-25 01:00", "2021-10-31 23:00", freq="h", tz="UTC")
+    tab = pd.DataFrame({"sensor": 39077, "time_stamp": horas, "barkjohn2022": np.arange(len(horas), dtype=float)})
+    # a July row of the next year, right after in the row order, must not enter the window of 30/10
+    extra = pd.DataFrame({"sensor": 39077, "time_stamp": pd.date_range("2022-07-01 00:00", periods=60, freq="h", tz="UTC"),
+                          "barkjohn2022": 1e6})
+    p = selecao_entradas.pares_emissao(pd.concat([tab, extra], ignore_index=True))
+    t = pd.Timestamp("2021-10-27 04:00", tz="UTC")
+    linha = p[p["time_stamp"] == t].iloc[0]
+    i = horas.get_loc(t)
+    assert linha["y48"] == pytest.approx(np.mean(np.arange(i + 1, i + 49)))
+    assert linha["hist24"] == pytest.approx(np.mean(np.arange(i - 23, i + 1)))
+    t_fim = pd.Timestamp("2021-10-31 04:00", tz="UTC")  # only 19 h left (< 36): no target
+    assert np.isnan(p[p["time_stamp"] == t_fim].iloc[0]["y48"])
+
+
+def test_rho_parcial_desconta_o_historico():
+    rng = np.random.default_rng(0)
+    z = rng.normal(size=500)
+    x = z + 0.01 * rng.normal(size=500)        # candidate = history (adds nothing)
+    y = z + 0.5 * rng.normal(size=500)
+    assert abs(selecao_entradas.rho_parcial_spearman(x, y, z)) < 0.15
+
+
+# 10. CAMS with moving bias (item 26): only the past, factor 1 in the first week of July
+
+def _cams_sintetico():
+    rodadas = pd.date_range("2024-06-29 12:00", "2024-07-31 12:00", freq="D", tz="UTC")
+    linhas = [(r, r + pd.Timedelta(hours=k), 10.0) for r in rodadas for k in range(0, 97)]
+    return pd.DataFrame(linhas, columns=["rodada", "valid_time", "pm_cams"])
+
+
+def test_cams_vies_movel_so_usa_o_passado():
+    import cams_vies_movel as cv
+    cams = _cams_sintetico()
+    horas = pd.date_range("2024-06-30", "2024-08-05", freq="h", tz="UTC")
+    t = pd.Timestamp("2024-07-20 04:00", tz="UTC")
+    medido = pd.Series(np.where(horas <= t, 20.0, 1e6), index=horas)  # future values absurd on purpose
+    p = cv.prever(cams, medido, [t], n_dias=7)
+    assert p["fator"].iloc[0] == pytest.approx(2.0)
+    assert p["cams_vies"].iloc[0] == pytest.approx(20.0)
+    assert len(p) == 48
+
+
+def test_cams_vies_movel_fator_1_na_primeira_semana_e_rodada_disponivel():
+    import cams_vies_movel as cv
+    cams = _cams_sintetico()
+    horas = pd.date_range("2024-06-30", "2024-08-05", freq="h", tz="UTC")
+    medido = pd.Series(20.0, index=horas)
+    t = pd.Timestamp("2024-07-05 04:00", tz="UTC")
+    assert cv.prever(cams, medido, [t], n_dias=1)["fator"].iloc[0] == 1.0
+    t14 = pd.Timestamp("2024-07-10 04:00", tz="UTC")  # N = 14 with incomplete window: 9 days since 01/07
+    assert cv.prever(cams, medido, [t14], n_dias=14)["fator"].iloc[0] == pytest.approx(2.0)
+    # the raw forecast uses the 12 UTC run of D − 1, which was available at 04 UTC of D
+    bruto = cv.previsao_bruta(cams, t)
+    assert bruto.index[0] == t + pd.Timedelta(hours=1)
+
+
+# 11. Version selection rule (T26): within 2% of best primary MAE, lowest cross-fitted Brier > 50
+
+def test_regra_selecao_2pct_mae_desempata_pelo_brier():
+    import avaliar_vc
+    df = pd.DataFrame([
+        {"modelo": "bilstm", "versao": "M1", "variante": "sem", "mae_principal": 10.00, "brier50": 0.080, "mae50": 3.0},
+        {"modelo": "bilstm", "versao": "M2", "variante": "sem", "mae_principal": 10.18, "brier50": 0.065, "mae50": 2.5},  # +1.8% <= 2%
+        {"modelo": "bilstm", "versao": "M3", "variante": "sem", "mae_principal": 10.25, "brier50": 0.050, "mae50": 2.0},  # +2.5% > 2%
+    ])
+    res = avaliar_vc.aplicar_regra_selecao(df)
+    assert res["escolhido"]["versao"] == "M2"
+    assert len(res["elegiveis"]) == 2

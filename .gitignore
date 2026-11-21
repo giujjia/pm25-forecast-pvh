@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+
+data/
+resultados/pesos/
+bootcamp-docs/
+references/
+auditoria/
+colab/
+# internal, not published
+PLANO_DE_DOWNLOADS.md
+src/esperar_execucao.py

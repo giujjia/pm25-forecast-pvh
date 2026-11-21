@@ -89,3 +89,18 @@ def test_eac4_2024_fica_num_arquivo_a_parte_e_pedido():
     req = cams.pedido_eac4("2020-01-01", "2020-12-31")
     assert req["time"] == [f"{h:02d}:00" for h in range(0, 24, 3)]
     assert req["area"] == era5.AREA
+
+
+def test_cams_previsao_cobre_2020_a_2026_sem_lacunas_nem_sobreposicao():
+    from datetime import timedelta
+    blocos = cams.blocos_previsao()
+    datas = []
+    for _, ini, fim in blocos:
+        d, f = date.fromisoformat(ini), date.fromisoformat(fim)
+        while d <= f:
+            datas.append(d)
+            d += timedelta(days=1)
+    assert len(datas) == len(set(datas))
+    assert min(datas) == date(2019, 12, 31)
+    assert max(datas) == date(2026, 10, 31)
+    assert len(datas) == (date(2026, 10, 31) - date(2019, 12, 31)).days + 1

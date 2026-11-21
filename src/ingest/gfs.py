@@ -87,15 +87,18 @@ def vazio():
     return campos
 
 
-def gravar(d, campos, fonte, ausentes, transferidos, segundos):
+def gravar(d, campos, fonte, ausentes, transferidos, segundos, sem_pblh=()):
+    atributos = {"rodada": f"{d:%Y-%m-%d}T{HORA}:00Z", "fonte": fonte,
+                 "passos_ausentes": ",".join(map(str, ausentes)) or "nenhum",
+                 "gerado_por": "src/ingest/gfs.py"}
+    if sem_pblh:  # exception decided by the author on 20/11/2026 (NCAR file without PBLH)
+        atributos["passos_sem_hpbl"] = ",".join(map(str, sem_pblh))
     ds = xr.Dataset(
         {n: (("passo", "lat", "lon"), campos[n], {"units": UNIDADES[n]}) for n in NOMES}
         | {"balde_inicio": (("passo",), campos["balde_inicio"], {"units": "h"})},
         coords={"passo": ("passo", np.array(PASSOS, dtype="i2"), {"units": "h"}),
                 "lat": ("lat", LATS), "lon": ("lon", LONS - 360.0)},
-        attrs={"rodada": f"{d:%Y-%m-%d}T{HORA}:00Z", "fonte": fonte,
-               "passos_ausentes": ",".join(map(str, ausentes)) or "nenhum",
-               "gerado_por": "src/ingest/gfs.py"},
+        attrs=atributos,
     )
     destino = alvo(d)
     destino.parent.mkdir(parents=True, exist_ok=True)
@@ -188,7 +191,8 @@ def ciclo_aws(d):
 
 # ---------------------------------------------------------------- NCAR (NCSS)
 
-VARS_NCSS = ["Planetary_Boundary_Layer_Height_surface", "u-component_of_wind_height_above_ground",
+PBLH_NCSS = "Planetary_Boundary_Layer_Height_surface"
+VARS_NCSS = [PBLH_NCSS, "u-component_of_wind_height_above_ground",
              "v-component_of_wind_height_above_ground", "Temperature_height_above_ground",
              "Dewpoint_temperature_height_above_ground", "Temperature_isobaric",
              "u-component_of_wind_isobaric", "v-component_of_wind_isobaric"]
@@ -209,7 +213,12 @@ def _ncar_passo(s, d, f):
                          "Total_precipitation_surface_6_Hour_Accumulation",
                          "Total_precipitation_surface_Mixed_intervals_Accumulation")
              if f'name="{v}"' in meta.text]
-    params = {"var": ",".join(VARS_NCSS + chuva), "north": -8, "south": -10.5, "west": -65,
+    # Author's decision (20/11/2026): if only PBLH is missing from the NCAR file (the f024 of
+    # 2020-01-11), the step is kept with hpbl = NaN and the exception is recorded in the run's
+    # attributes. Any other missing variable is still an error.
+    sem_pblh = f'name="{PBLH_NCSS}"' not in meta.text
+    variaveis = [v for v in VARS_NCSS if not (sem_pblh and v == PBLH_NCSS)]
+    params = {"var": ",".join(variaveis + chuva), "north": -8, "south": -10.5, "west": -65,
               "east": -62.5, "accept": "netcdf", "temporal": "all"}
     for tentativa in range(5):
         r = s.get(base, params=params, timeout=600)
@@ -221,7 +230,8 @@ def _ncar_passo(s, d, f):
     ds = xr.open_dataset(io.BytesIO(r.content), engine="scipy", decode_times=False)
     assert np.allclose(ds["latitude"].values, LATS) and np.allclose(ds["longitude"].values, LONS)
     out = {
-        "hpbl": ds["Planetary_Boundary_Layer_Height_surface"].squeeze().values,
+        "hpbl": (np.full((len(LATS), len(LONS)), np.nan, dtype="f4") if sem_pblh
+                 else ds[PBLH_NCSS].squeeze().values),
         "u10": _nivel(ds["u-component_of_wind_height_above_ground"], 10.0),
         "v10": _nivel(ds["v-component_of_wind_height_above_ground"], 10.0),
         "t2m": _nivel(ds["Temperature_height_above_ground"], 2.0),
@@ -230,6 +240,8 @@ def _ncar_passo(s, d, f):
         "v850": _nivel(ds["v-component_of_wind_isobaric"], 85000.0),
         "t925": _nivel(ds["Temperature_isobaric"], 92500.0),
     }
+    if sem_pblh:
+        out["_sem_pblh"] = True
     if chuva:
         tp = ds[chuva[0]]
         lim = ds[tp.dims[0] + "_bounds"].values if tp.dims[0] + "_bounds" in ds else ds["time_bounds"].values
@@ -246,18 +258,21 @@ def _ncar_passo(s, d, f):
 def ciclo_ncar(d):
     s = sessao_com_retentativas()
     t0 = time.perf_counter()
-    campos, ausentes, total = vazio(), [], 0
+    campos, ausentes, total, sem_pblh = vazio(), [], 0, []
     for k, f in enumerate(PASSOS):
         out, n = _ncar_passo(s, d, f)
         total += n
         if out is None:
             ausentes.append(f)
             continue
+        if out.pop("_sem_pblh", False):
+            sem_pblh.append(f)
         for nome, v in out.items():
             campos[nome][k] = v
     if len(ausentes) == len(PASSOS):
         raise RuntimeError("nenhum passo da rodada existe no NCAR")
-    gravar(d, campos, "ncar:d084001 (THREDDS NCSS)", ausentes, total, time.perf_counter() - t0)
+    gravar(d, campos, "ncar:d084001 (THREDDS NCSS)", ausentes, total, time.perf_counter() - t0,
+           sem_pblh)
     return d, ausentes, total
 
 

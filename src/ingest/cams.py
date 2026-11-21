@@ -47,11 +47,13 @@ BLOCOS = [
 ]
 
 
-# Whole years (decided by the author on 16/11/2026): 2020–2023, 2025 and 2026 up to October, in
-# 2-month blocks of runs, like those of 2024. The first block of 2020 and that of 2025 start
-# on 31/12 of the previous year (run used for the issuances of 01/01). The 2026 forecast PM2.5 goes
+# Whole years (decided by the author on 16/11/2026): 2020–2025 and 2026 up to October, in
+# 2-month blocks of runs. The first block of 2020 starts on 2019-12-31 (run used for the issuances
+# of 2020-01-01). In 2024, 202407-08 already starts on 2024-06-30 (E032) and 202501-02 already
+# starts on 2024-12-31 (E089), so 202405-06 ends on 2024-06-29 and 202411-12 ends on 2024-12-30
+# to keep zero duplicate reference dates across the archive. The 2026 forecast PM2.5 goes
 # to data/raw/cams/selado_2026/ (blind test), with no value printed.
-ANOS_PREVISAO = (2020, 2021, 2022, 2023, 2025, 2026)
+ANOS_PREVISAO = (2020, 2021, 2022, 2023, 2024, 2025, 2026)
 ATE_2026 = 10  # last month of 2026
 TESTE_CEGO = 2026
 
@@ -63,8 +65,14 @@ def blocos_previsao():
         ultimo = ATE_2026 if ano == TESTE_CEGO else 12
         for m in range(1, ultimo + 1, 2):
             m2 = min(m + 1, ultimo)
-            ini = f"{ano - 1}-12-31" if m == 1 and ano - 1 not in ANOS_PREVISAO else f"{ano}-{m:02d}-01"
+            ini = f"{ano - 1}-12-31" if (m == 1 and (ano - 1 not in ANOS_PREVISAO or ano == 2025)) else f"{ano}-{m:02d}-01"
+            if ano == 2024 and m == 7:
+                ini = "2024-06-30"
             fim = f"{ano}-{m2:02d}-{monthrange(ano, m2)[1]:02d}"
+            if ano == 2024 and m == 5:
+                fim = "2024-06-29"
+            elif ano == 2024 and m == 11:
+                fim = "2024-12-30"
             pasta = RAW / "selado_2026" if ano == TESTE_CEGO else RAW
             out.append((pasta / f"cams_pm25_{ano}{m:02d}-{m2:02d}.nc", ini, fim))
     return out
