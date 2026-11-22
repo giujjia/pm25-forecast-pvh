@@ -15,8 +15,8 @@ IMPLEMENTAÇÃO (not fixed by the text; confirmed by the author on 18/11/2026):
 - the first 7 days of July have factor 1 for every N, so all models are compared on the same days;
   with N = 14, days 8–14 of July use the incomplete window (only the days since 1 July).
 
-2024 is only run after the pre-registration: --ano 2024 requires --confirmo-pre-registro.
-Usage: .venv/bin/python src/cams_vies_movel.py --ano 2024 --confirmo-pre-registro
+2024 is only run after the pre-registration: --ano 2024 requires --abrir.
+Usage: .venv/bin/python src/cams_vies_movel.py --ano 2024 --abrir
 """
 import argparse
 import sys
@@ -100,10 +100,10 @@ def prever(cams, medido, emissoes, n_dias=N_PRINCIPAL, inicio_temporada=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ano", type=int, required=True)
-    ap.add_argument("--confirmo-pre-registro", action="store_true")
+    ap.add_argument("--abrir", action="store_true")
     a = ap.parse_args()
-    if a.ano >= 2024 and not a.confirmo_pre_registro:
-        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --confirmo-pre-registro.")
+    if a.ano >= 2024 and not a.abrir:
+        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --abrir.")
     raise SystemExit("Execução real fica para a T29 (teste de 2024), pelo registrador; ver docstring.")
 
 

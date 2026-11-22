@@ -74,8 +74,8 @@ def grade_completa(df, ini, fim):
 
 
 def construir(ate_ano=2023):
-    if ate_ano >= 2024 and "--confirmo-pre-registro" not in sys.argv:
-        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --confirmo-pre-registro.")
+    if ate_ano >= 2024 and "--abrir" not in sys.argv:
+        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --abrir.")
     ini = pd.Timestamp(f"{ANO_INICIO}-01-01", tz="UTC")
     fim = pd.Timestamp(f"{ate_ano + 1}-01-01", tz="UTC")
     brutos = {s: ler_horario(s) for s in SENSORES}
@@ -134,7 +134,7 @@ def relatorio(tab):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ate-ano", type=int, default=2023)
-    ap.add_argument("--confirmo-pre-registro", action="store_true")
+    ap.add_argument("--abrir", action="store_true")
     a = ap.parse_args()
     tab = construir(a.ate_ano)
     OUT.mkdir(parents=True, exist_ok=True)

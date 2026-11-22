@@ -130,8 +130,8 @@ def frp_transportado(fogo, u850, v850):
 
 
 def construir(ate_ano=2023):
-    if ate_ano >= 2024 and "--confirmo-pre-registro" not in sys.argv:
-        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --confirmo-pre-registro.")
+    if ate_ano >= 2024 and "--abrir" not in sys.argv:
+        raise SystemExit("2024 só é aberto depois do pré-registro (T27). Use --abrir.")
     alvo = pd.read_parquet(ALVO / f"alvo_horario_2020_{ate_ano}.parquet")
     era5 = pd.read_parquet(ERA5)
     era5["time_stamp"] = pd.to_datetime(era5["time_stamp"], utc=True)
@@ -161,7 +161,7 @@ def construir(ate_ano=2023):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ate-ano", type=int, default=2023)
-    ap.add_argument("--confirmo-pre-registro", action="store_true")
+    ap.add_argument("--abrir", action="store_true")
     a = ap.parse_args()
     tab, falhas = construir(a.ate_ano)
     OUT.mkdir(parents=True, exist_ok=True)

@@ -364,3 +364,34 @@ def test_regra_selecao_2pct_mae_desempata_pelo_brier():
     res = avaliar_vc.aplicar_regra_selecao(df)
     assert res["escolhido"]["versao"] == "M2"
     assert len(res["elegiveis"]) == 2
+
+
+# T29: test of 2024 (src/teste_2024.py)
+
+def test_teste_2024_travado_sem_pre_registro(monkeypatch):
+    sys.path.insert(0, str(RAIZ / "src" / "modelos"))
+    import teste_2024
+    monkeypatch.setattr(sys, "argv", ["teste_2024.py", "--ano", "2024"])
+    with pytest.raises(SystemExit, match="pré-registro"):
+        teste_2024.main()
+    monkeypatch.setattr(sys, "argv", ["teste_2024.py", "--ano", "2023"])
+    with pytest.raises(SystemExit, match="ensaio"):
+        teste_2024.main()
+
+
+def test_teste_2024_alertas_e_bootstrap():
+    sys.path.insert(0, str(RAIZ / "src" / "modelos"))
+    import teste_2024
+    real = np.array([1, 1, 0, 0, 1], bool)
+    alerta = np.array([1, 0, 1, 0, 1], bool)
+    tp, fp, fn, tn, pr, rc, f1 = teste_2024.prf(alerta, real)
+    assert (tp, fp, fn, tn) == (2, 1, 1, 1)
+    assert pr == pytest.approx(2 / 3) and rc == pytest.approx(2 / 3) and f1 == pytest.approx(2 / 3)
+    # 125 is inclusive (Atenção, ">= 125"); 50 and 60 are "above"
+    assert teste_2024.evento(pd.Series([125.0]), 125.0).iloc[0]
+    assert not teste_2024.evento(pd.Series([50.0]), 50.0).iloc[0]
+    # block bootstrap keeps the number of days and draws runs of 7 consecutive days
+    dias = np.arange(30)
+    amostra = teste_2024.blocos_bootstrap(dias, np.random.default_rng(0))
+    assert len(amostra) == 30
+    assert all(amostra[k + 1] - amostra[k] == 1 for k in range(0, 28, 7) if k + 1 < 30 and (k + 1) % 7)
