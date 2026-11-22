@@ -35,7 +35,8 @@ IMPLEMENTAÇÃO (choices not fixed by the frozen table; confirmed by the author 
   training issuances, 2020–2022), as in CV;
 - the main metric is reported on each model's own pairs and on the pairs common to every model of the
   comparison (headline: common pairs, so all models are scored on the same issuances);
-- alerts, Brier and coherence on the 04 UTC issuances of Jul–Oct, for D and D+1 separately;
+- alerts, Brier and coherence on the 04 UTC issuances of Jul–Oct, for D and D+1 separately, on the days
+  common to every model (added on 22/11/2026, before opening 2024, in the content review);
   "above 50/60" is ybar > q and "Atenção" is ybar >= 125; the Brier climatology is the monthly
   frequency of the event over valid days of the training sensors in 2020–2022;
 - bootstrap: 1000 resamples of blocks of 7 consecutive issuance days (both sensors and D/D+1 of a day
@@ -454,14 +455,21 @@ def avaliar_alertas(modelos, hist24_teste, hist24_vc, freq_clim, ensaio):
     rng = np.random.default_rng(SEMENTE_BOOTSTRAP)
     linhas, brier_l, pr_l, coer_l = [], [], [], []
     chaves = [ch for ch in modelos if modelos[ch]["sensor"].isin(sel.SENSORES_TREINO).any()]
+    # every model is scored on the same days: those where all models have a forecast and the
+    # probabilistic ones have their daily-output inputs (same rule as the common pairs of the main metric)
+    tabelas, comum = {}, None
     for ch in chaves:
         p = modelos[ch][modelos[ch]["sensor"].isin(sel.SENSORES_TREINO)]
-        tb = dias_seca04(p, hist24_teste)
-        tb = tb.dropna(subset=["ybar"]).copy()
+        tb = dias_seca04(p, hist24_teste).dropna(subset=["ybar", "m"])
+        if ch in PROBABILISTICOS:
+            tb = tb.dropna(subset=["largura", "hist"])
+        tabelas[ch] = tb.set_index(["sensor", "t_emissao", "dia"])
+        comum = tabelas[ch].index if comum is None else comum.intersection(tabelas[ch].index)
+    for ch in chaves:
+        tb = tabelas[ch].loc[comum].reset_index()
         prob = ch in PROBABILISTICOS
         if prob:
             hx = ajustar_hxlr(ch, hist24_vc)
-            tb = tb.dropna(subset=["m", "largura", "hist"])
         for dia in (0, 1):
             t = tb[tb["dia"] == dia]
             mes = (t["t_emissao"] + pd.to_timedelta(dia, unit="D")).dt.month.to_numpy()
