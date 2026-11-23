@@ -10,4 +10,6 @@ auditoria/
 colab/
 # internal, not published
 PLANO_DE_DOWNLOADS.md
+METHODS.md
+REFERENCES.md
 src/esperar_execucao.py
