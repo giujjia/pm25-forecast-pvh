@@ -4,8 +4,6 @@ Every dry season (July to October), smoke from fires fills the air of Porto Velh
 
 Final project of the **Future Tech Leaders Brasil — Space Tech Bootcamp 2026**, and groundwork for a master's project. Author: Giullia de Souza Santos ([@giujjia](https://github.com/giujjia)), Computer Science, Federal University of Rondônia (UNIR).
 
-**Status (22/11/2026):** first delivery complete. Cross-validation (2021–2023) and the 2024 test have been run. The 2024 test was run **once**, after the comparisons were pre-registered and frozen in commit [`c26125a`](https://github.com/giujjia/pm25-forecast-pvh/commit/c26125a) (20/11/2026).
-
 All values below are **PM2.5 measured by the corrected PurpleAir sensors** (Barkjohn et al., 2022 correction), not reference-grade PM2.5. See [Limitations](#limitations).
 
 ## Results
@@ -89,8 +87,6 @@ python src/figuras_resultados.py
 ```
 
 **The 2024 lock:** every script that touches 2024 refuses to run without `--abrir`, and a test checks this. `python src/teste_2024.py --ensaio` runs the whole test pipeline on 2023 (already seen in cross-validation) to check the code without opening the test year.
-
-In the original runs, every step went through an internal audit wrapper that records the command, a copy and hash of the scripts, the environment, a timestamped log and a hashed manifest of the outputs. The wrapper and the audit records are not part of this repository.
 
 ## Structure
 

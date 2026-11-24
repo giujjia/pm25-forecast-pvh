@@ -1,6 +1,6 @@
-"""Figures of the 2024 test for the report and the page (T35–T36).
+"""Figures of the 2024 test (dry season, main comparison).
 
-Reads only the saved forecasts of E180 (data/processed/teste_2024/previsoes.parquet).
+Reads only the saved forecasts of the 2024 test (data/processed/teste_2024/previsoes.parquet, written by src/teste_2024.py).
 - fig_mae_horizonte_2024.png: MAE of the median by horizon (+1 … +48 h), 04 UTC issuances, Jul–Oct 2024,
   training sensors, for bilstm M1 sem, bilstm M2 era5, persistence, CAMS with moving bias (N = 7) and
   raw CAMS, on the issuance–sensor pairs common to the five models (the same 197 pairs as the main
@@ -11,7 +11,7 @@ Reads only the saved forecasts of E180 (data/processed/teste_2024/previsoes.parq
   04 UTC issuance) of the main model (bilstm M1 sem) and persistence, Jul–Oct 2024, with the 50 and
   125 µg/m³ thresholds.
 Colours: validated categorical palette (slots 1–3) on a light surface.
-Every figure carries the PurpleAir attribution required by its terms (auditoria F63).
+Every figure carries the attribution required by the PurpleAir terms of use.
 
 Usage (from the root): .venv/bin/python src/figuras_resultados.py
 Output: resultados/figuras/

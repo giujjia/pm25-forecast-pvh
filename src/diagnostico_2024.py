@@ -1,4 +1,4 @@
-"""Diagnostics of the 2024 test (descriptive, after E180): how far 2024 was from the training range.
+"""Diagnostics of the 2024 test (descriptive, run after the test): how far 2024 was from the training range.
 
 Reads only saved outputs (data/processed/teste_2024/previsoes.parquet and the 2020–2023 input table);
 tests nothing and changes no result. For the dry season (Jul–Oct), 04 UTC issuances, training sensors,
