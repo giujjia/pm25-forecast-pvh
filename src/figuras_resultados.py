@@ -7,9 +7,10 @@ Reads only the saved forecasts of the 2024 test (data/processed/teste_2024/previ
   table). curvas_horizonte.csv is NOT used: it scores each model on its own pairs (CAMS has 226), which
   made CAMS look better than on the common pairs;
 - fig_serie_diaria_2024.png: daily mean of the PM2.5 measured by the corrected PurpleAir sensors (39077)
-  on valid days (>= 18 of 24 h) and the day-D forecast (mean of the hourly medians and 10–90% quantiles,
-  04 UTC issuance) of the main model (bilstm M1 sem) and persistence, Jul–Oct 2024, with the 50 and
-  125 µg/m³ thresholds.
+  and the day-D forecast (mean of the hourly medians and 10–90% quantiles, 04 UTC issuance) of the main
+  model (bilstm M1 sem) and persistence, Jul–Oct 2024, with the 50 and 125 µg/m³ thresholds. Only days
+  that have a forecast and >= 18 of 24 h measured are drawn (98 of the 111 days with >= 18 h measured):
+  an issuance is dropped when its 72 h input window has a gap longer than 3 h (src/conjunto.py).
 Colours: validated categorical palette (slots 1–3) on a light surface.
 Every figure carries the attribution required by the PurpleAir terms of use.
 
@@ -129,7 +130,7 @@ def main():
         prev=("q50", "mean"), q10=("q10", "mean"), q90=("q90", "mean"),
         y=("y", "mean"), n=("y", "count"),
     ).reindex(grade)
-    valido = d_m1["n"] >= 18  # valid day: >= 18 of 24 hours
+    valido = d_m1["n"] >= 18  # day with a forecast and >= 18 of 24 h measured
     obs = d_m1["y"].where(valido)
 
     g_per = media(p, "persistencia_-_-")
@@ -145,7 +146,7 @@ def main():
     ax.plot(grade, d_per["prev"].where(valido), color=COR["persistencia_-_-"], linewidth=1.4, alpha=0.85,
             label="Persistência (valor da 0h local)")
     ax.plot(grade, obs, color=COR["observado"], linewidth=1.6, label="Medido (PurpleAir corrigido)")
-    # isolated valid days (e.g. 13/07, inside the July gap) as dots, so that no valid day is hidden
+    # isolated days with a forecast (e.g. 13/07) as dots, so that none is hidden
     for s, cor in ((d_m1["prev"].where(valido), COR["bilstm_M1_sem"]),
                    (d_per["prev"].where(valido), COR["persistencia_-_-"]), (obs, COR["observado"])):
         ax.plot(grade, isolados(s), linestyle="none", marker="o", markersize=2.6, color=cor)
@@ -153,7 +154,7 @@ def main():
     for q, txt in ((50, "50 µg/m³ (PI-2)"), (125, "125 µg/m³ (Atenção)")):
         ax.axhline(q, color=TEXTO2, linewidth=0.8, linestyle=":")
         ax.annotate(txt, (grade.min(), q), xytext=(2, 3), textcoords="offset points", fontsize=7.5, color=TEXTO2)
-    ax.text(pd.Timestamp("2024-07-18 04:00", tz="UTC"), 205, "7 a 29/07: só 13/07\ncom dia válido no 39077",
+    ax.text(pd.Timestamp("2024-07-18 04:00", tz="UTC"), 205, "7 a 29/07: previsão só em 13/07;\n15 a 26/07 sem medição",
             fontsize=7.3, color=TEXTO2, ha="center", va="center", style="italic")
     ax.set_ylabel("Média diária de PM2.5 (µg/m³)", color=TEXTO2, fontsize=9)
     ax.set_ylim(0, None)

@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-deck="false">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<script>
+try {
+  var _s = localStorage.getItem("color-scheme");
+  if (_s === "dark") {
+    document.querySelector('meta[name="color-scheme"]').content = "dark";
+    document.documentElement.setAttribute("data-theme", "dark");
+  }
+} catch (e) {}
+</script>
+<title>Previsão de PM2.5 em 48 h · Porto Velho (Amazônia)</title>
+<meta name="description" content="Previsão de PM2.5 nas próximas 48 horas em Porto Velho (Amazônia brasileira), com teste pré-registrado: rede Bi-LSTM de quantis contra a persistência e o CAMS do Copernicus, nos anos típicos (2021–2023) e na seca extrema de 2024.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+/* ============================================================
+   PM2.5 · Porto Velho — estilo "Instrumento" (paleta Future Tech Leaders)
+   Modo claro por padrão; coluna centralizada; IBM Plex Sans/Mono;
+   violeta FTL (#4a14dc) = rede principal e destaque de interface;
+   lima FTL (#d3ee0a sobre tinta escura) = índices de seção;
+   grafite neutro (#5e5e5e) = neutros; âmbar só nos limiares (50 e 125 µg/m³).
+   ============================================================ */
+:root {
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --content-max: 960px;
+
+  --ftl-violet: #4a14dc;
+  --ftl-lime: #d3ee0a;
+  --ftl-gray: #5e5e5e;
+
+  --bg: #f6f6f9;
+  --paper: #ffffff;
+  --panel: #ffffff;
+  --panel-alt: #efeff4;
+  --ink: #17171f;
+  --ink-2: #363644;
+  --muted: #5c5c68;
+  --line: #dcdce5;
+  --line-strong: #17171f;
+
+  --rail-bg: #ffffff;
+  --rail-ink: var(--ink);
+  --rail-muted: var(--muted);
+  --rail-line: var(--line);
+  --rail-accent: var(--m1);
+  --rail-active-bg: var(--m1-soft);
+
+  --capa-bg: #ffffff;
+  --capa-ink: var(--ink);
+  --capa-muted: var(--muted);
+  --capa-line: var(--line);
+  --capa-accent: var(--m1);
+  --spark-fill: rgba(74, 20, 220, 0.08);
+
+  --m1: #4a14dc;
+  --m1-soft: rgba(74, 20, 220, 0.09);
+  --m2: #0a7486;
+  --m3: #5e5e68;
+  --pers: #406b00;
+  --pers-soft: rgba(64, 107, 0, 0.11);
+  --cams: #44444f;
+  --cams-raw: #868694;
+  --per00: #a6266f;
+  --ns: #5e5e6b;
+  --thresh: #a85200;
+  --thresh-soft: rgba(168, 82, 0, 0.11);
+  --warn: var(--thresh);
+  --warn-soft: var(--thresh-soft);
+  --gap-band: rgba(92, 92, 104, 0.10);
+  --leitura-bg: rgba(74, 20, 220, 0.045);
+  --idx-bg: var(--ftl-lime);
+  --idx-ink: #17171f;
+  --attrib-ink: #1c1d1c; /* PurpleAir Attribution Guide: legível; preto no tema claro */
+
+  --scrollbar-track: #efeff4;
+  --scrollbar-thumb: #6f6f7c;
+
+  color-scheme: light;
+  accent-color: var(--m1);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root:where(:has(> head > meta[name="color-scheme"][content="dark"]), [data-theme="dark"]) {
+  --bg: #0e0e14;
+  --paper: #14141d;
+  --panel: #14141d;
+  --panel-alt: #1b1b27;
+  --ink: #eeeef4;
+  --ink-2: #c9c9d6;
+  --muted: #9a9aa8;
+  --line: #2a2a38;
+  --line-strong: #eeeef4;
+
+  --rail-bg: #111119;
+  --rail-ink: var(--ink);
+  --rail-muted: var(--muted);
+  --rail-line: #262634;
+  --rail-accent: #a78bfa;
+  --rail-active-bg: rgba(167, 139, 250, 0.14);
+
+  --capa-bg: #12121b;
+  --capa-ink: var(--ink);
+  --capa-muted: var(--muted);
+  --capa-line: #262634;
+  --capa-accent: #a78bfa;
+  --spark-fill: rgba(167, 139, 250, 0.12);
+
+  --m1: #a78bfa;
+  --m1-soft: rgba(167, 139, 250, 0.15);
+  --m2: #4fd1e0;
+  --m3: #9e9eac;
+  --pers: #d3ee0a;
+  --pers-soft: rgba(211, 238, 10, 0.14);
+  --cams: #bcbcc9;
+  --cams-raw: #747482;
+  --per00: #e57bb5;
+  --ns: #9292a1;
+  --thresh: #f5a638;
+  --thresh-soft: rgba(245, 166, 56, 0.15);
+  --gap-band: rgba(154, 154, 168, 0.12);
+  --leitura-bg: rgba(167, 139, 250, 0.08);
+  --idx-bg: var(--ftl-lime);
+  --idx-ink: #14141d;
+  --attrib-ink: #ffffff;
+
+  --scrollbar-track: #14141d;
+  --scrollbar-thumb: #767686;
+
+  color-scheme: dark;
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 1.03125rem/1.65 var(--font-sans);
+  text-align: start;
+}
+a { color: var(--m1); text-underline-offset: 2px; }
+code { font: 0.86em/1.4 var(--font-mono); background: var(--panel-alt); padding: 1px 4px; }
+strong { font-weight: 600; }
+:focus-visible { outline: 2px solid var(--m1); outline-offset: 2px; }
+.skip {
+  position: absolute; inset-inline-start: -9999px; top: 8px; z-index: 100;
+  background: var(--ink); color: var(--paper); padding: 8px 12px; font: 500 0.8125rem var(--font-mono);
+}
+.skip:focus { inset-inline-start: 8px; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.layout { display: grid; grid-template-columns: 224px minmax(0, 1fr); align-content: start; min-height: 100vh; }
+main { min-width: 0; }
+
+/* coluna centralizada nas seções, capa e rodapé */
+.capa,
+.sec,
+.site-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--content-max)) minmax(0, 1fr);
+}
+.capa > *,
+.sec > *,
+.site-footer > * {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* ---------- trilho lateral ---------- */
+.rail {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px;
+  padding: 22px 14px 18px;
+  background: var(--rail-bg);
+  color: var(--rail-ink);
+  border-inline-end: 1px solid var(--rail-line);
+}
+.rail-brand { display: grid; gap: 4px; text-decoration: none; color: inherit; padding: 0 8px; }
+.rail-mark { font: 600 1.375rem/1 var(--font-mono); letter-spacing: -0.02em; color: var(--rail-ink); }
+.rail-place { font: 400 0.6875rem/1.3 var(--font-mono); color: var(--rail-muted); }
+.rail-nav { display: flex; flex-direction: column; }
+.rail-nav a {
+  display: grid; grid-template-columns: 2.1rem 1fr; align-items: baseline;
+  padding: 6px 8px; color: var(--rail-muted); text-decoration: none; font-size: 0.84375rem;
+  border-inline-start: 2px solid transparent;
+}
+.rail-nav a .idx { font: 500 0.71875rem var(--font-mono); }
+.rail-nav a:hover { color: var(--rail-ink); }
+.rail-nav a[aria-current="true"] {
+  color: var(--rail-ink);
+  font-weight: 600;
+  border-inline-start-color: var(--rail-accent);
+  background: var(--rail-active-bg);
+}
+.rail-nav a[aria-current="true"] .idx { color: var(--rail-accent); }
+.rail-progress { height: 2px; background: var(--rail-line); margin: 0 8px; }
+.rail-progress span { display: block; height: 100%; width: 0; background: var(--rail-accent); }
+.rail-ftl {
+  margin-top: auto;
+  padding: 12px 8px 4px;
+  border-top: 1px solid var(--rail-line);
+}
+.rail-ftl img {
+  display: block;
+  width: 146px;
+  max-width: 100%;
+  height: auto;
+  opacity: 0.88;
+}
+:root:where(:has(> head > meta[name="color-scheme"][content="dark"]), [data-theme="dark"]) .rail-ftl img {
+  background: #ffffff;
+  padding: 5px 7px;
+  opacity: 1;
+}
+.ctrl-btn {
+  font: 500 0.75rem/1.2 var(--font-mono);
+  color: var(--rail-ink);
+  background: var(--paper);
+  border: 1px solid var(--rail-line);
+  padding: 6px 9px;
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: 0;
+}
+.ctrl-btn:hover { border-color: var(--ink-2); }
+.ctrl-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* ---------- capa ---------- */
+.capa {
+  background: var(--capa-bg);
+  color: var(--capa-ink);
+  padding: 28px clamp(20px, 5vw, 64px) 40px;
+  border-bottom: 1px solid var(--capa-line);
+  text-align: start;
+}
+.capa-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  width: 100%;
+  margin: 0 0 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--capa-line);
+}
+.partners-bar {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 360px;
+  max-width: 100%;
+}
+.partners-bar img {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+}
+.util-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+:root:where(:has(> head > meta[name="color-scheme"][content="dark"]), [data-theme="dark"]) .partners-bar {
+  background: #ffffff;
+  padding: 6px 10px;
+}
+.capa .kicker {
+  color: var(--capa-accent);
+  font: 500 0.875rem/1.4 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+.capa h1 {
+  font: 600 clamp(1.65rem, 1.25rem + 1.4vw, 2.35rem)/1.18 var(--font-sans);
+  letter-spacing: -0.02em;
+  margin: 12px 0 16px;
+  max-width: 28ch;
+  text-wrap: balance;
+}
+.capa .lede {
+  font-size: 1.09375rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 66ch;
+  margin: 0;
+  text-wrap: pretty;
+}
+.capa .byline {
+  display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 20px;
+  margin: 16px 0 0;
+  font: 400 0.78125rem/1.5 var(--font-mono);
+  color: var(--capa-muted);
+}
+.capa .byline a { color: var(--capa-accent); }
+.spark { margin: 24px 0 0; width: 100%; }
+.spark svg { display: block; width: 100%; height: auto; }
+.spark-fill { fill: var(--spark-fill); }
+.spark-line { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.spark-base { stroke: var(--line); stroke-width: 1; }
+.spark-thresh { stroke: var(--thresh); stroke-width: 1.1; stroke-dasharray: 4 4; }
+.spark-lbl { fill: var(--thresh); font: 500 11px var(--font-mono); }
+.spark-tick { fill: var(--muted); font: 400 11px var(--font-mono); }
+.spark-cap { margin: 8px 0 0; font: 400 0.75rem var(--font-mono); color: var(--capa-muted); text-align: start; }
+
+/* números-chave */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  margin: 0 auto 28px;
+  width: 100%;
+  text-align: start;
+}
+.kpi { padding: 16px 18px 6px 0; margin-inline-end: 18px; border-inline-end: 1px solid var(--line); min-width: 0; }
+.kpi:last-child { border-inline-end: 0; margin-inline-end: 0; padding-inline-end: 0; }
+.kpi-label { display: block; font: 500 0.6875rem/1.4 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.kpi-val { display: block; margin: 8px 0 6px; font: 500 2.05rem/1.05 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.kpi-val[data-i18n] { font-size: 1.45rem; letter-spacing: 0; }
+.kpi-val small { display: block; margin-top: 6px; font: 400 0.75rem/1.3 var(--font-mono); letter-spacing: 0; color: var(--muted); }
+.kpi-sub { display: block; font-size: 0.84375rem; line-height: 1.45; color: var(--muted); }
+.capa .kpi-strip { border-top-color: var(--capa-line); margin: 34px auto 0; }
+.capa .kpi { border-inline-end-color: var(--capa-line); }
+.c-m1 { color: var(--m1); }
+.c-pers { color: var(--pers); }
+.c-warn { color: var(--thresh); }
+.c-alto { color: var(--ink); }
+
+/* ---------- seções ---------- */
+.sec { padding: 64px clamp(20px, 5vw, 64px) 44px; border-bottom: 1px solid var(--line); }
+.sec-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 22px;
+  text-align: start;
+}
+.sec-idx {
+  font: 600 0.875rem/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--idx-ink);
+  background: var(--idx-bg);
+  padding: 5px 8px;
+}
+.kicker {
+  margin: 0;
+  font: 600 clamp(1.25rem, 1.12rem + 0.55vw, 1.5rem)/1.25 var(--font-sans);
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.sec h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font: 500 clamp(1.0625rem, 1rem + 0.25vw, 1.2rem)/1.45 var(--font-sans);
+  letter-spacing: -0.005em;
+  color: var(--ink-2);
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+h3.sub {
+  margin: 34px 0 12px;
+  font: 600 1.0625rem/1.35 var(--font-sans);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-align: start;
+}
+.prose { width: 100%; max-width: 72ch; }
+.prose p { margin: 0 0 14px; text-wrap: pretty; }
+.aviso { max-width: 72ch; margin: -6px 0 18px; font-style: italic; color: var(--muted); text-align: start; text-wrap: pretty; }
+.chips { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 0 0 22px; }
+.meta-pill { font: 500 0.75rem/1.25 var(--font-mono); padding: 6px 9px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); }
+
+/* ---------- figuras ---------- */
+.fig {
+  width: 100%; margin: 24px 0 32px; padding: 16px 18px;
+  background: var(--paper); border: 1px solid var(--line);
+}
+.fig-estreita { max-width: 820px; }
+.fig-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 14px; }
+.fig-n { font: 600 0.75rem/1.2 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; background: var(--m1-soft); color: var(--m1); padding: 3px 7px; }
+.fig-t { font: 600 0.9375rem/1.35 var(--font-sans); }
+.fig-s, .fig-tag { font: 400 0.75rem/1.4 var(--font-mono); color: var(--muted); }
+.fig-tag { margin-inline-start: auto; }
+.fig > svg, .fig .tw > svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart { overflow-x: auto; }
+.chart > svg { display: block; width: 100%; height: auto; overflow: visible; }
+.fig-dm .chart > svg { max-width: 720px; margin-inline: auto; }
+.fig-note { max-width: 78ch; margin: 12px 0 0; font-size: 0.84375rem; line-height: 1.55; color: var(--muted); text-wrap: pretty; }
+.leitura { margin-top: 14px; padding: 11px 14px; border-inline-start: 3px solid var(--m1); background: var(--leitura-bg); }
+.leitura-k { display: block; margin-bottom: 5px; font: 600 0.6875rem/1.2 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--m1); }
+.leitura p, .leitura div { margin: 0; font-size: 0.9375rem; line-height: 1.55; color: var(--ink); text-wrap: pretty; }
+.duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; width: 100%; margin: 28px 0 34px; align-items: start; }
+.duo .fig { margin: 0; }
+.tw { overflow-x: auto; width: 100%; }
+
+/* ODS */
+.ods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; margin: 0 0 8px; border: 1px solid var(--line); background: var(--paper); }
+.ods .ods-h { grid-column: 1 / -1; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); font: 600 0.71875rem/1.3 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-align: start; }
+.ods p { margin: 0; padding: 13px 14px; font-size: 0.90625rem; line-height: 1.5; border-inline-end: 1px solid var(--line); }
+.ods p:last-child { border-inline-end: 0; }
+.ods p strong { display: block; margin-bottom: 4px; font: 600 0.78125rem/1.3 var(--font-mono); color: var(--m1); }
+
+/* perguntas */
+.perguntas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; width: 100%; margin: 0 auto 16px; }
+.pergunta { padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--m1); }
+.pergunta-k { font: 600 0.71875rem/1.2 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--m1); }
+.pergunta p { margin: 8px 0 0; font-size: 1rem; line-height: 1.5; font-weight: 500; text-wrap: pretty; }
+.ressalva { width: 100%; padding: 12px 16px; border: 1px dashed var(--ns); background: var(--paper); font-size: 0.90625rem; line-height: 1.55; color: var(--ink-2); }
+.ressalva-k { display: block; margin-bottom: 4px; font: 600 0.6875rem/1.2 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+/* tabela de dados */
+.data-table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); font-size: 0.90625rem; line-height: 1.45; }
+.data-table th, .data-table td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: top; }
+.data-table thead th { font: 600 0.6875rem/1.3 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); background: var(--panel-alt); text-wrap: balance; }
+.data-table tbody th { font-weight: 600; min-width: 12rem; }
+.data-table tr:last-child th, .data-table tr:last-child td { border-bottom: 0; }
+
+/* passos do método */
+ol.passos { list-style: none; counter-reset: passo; margin: 0 auto 8px; padding: 0; width: 100%; border-top: 1px solid var(--line); }
+ol.passos li { counter-increment: passo; display: grid; grid-template-columns: 2.8rem 10.5rem minmax(0, 1fr); gap: 4px 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 0.96875rem; line-height: 1.55; }
+ol.passos li::before { content: counter(passo, decimal-leading-zero); font: 500 0.8125rem/1.9 var(--font-mono); color: var(--m1); }
+.passo-k { font-weight: 600; }
+
+/* barras de anos (dobras) */
+.split-bars { display: grid; gap: 6px; font-family: var(--font-mono); font-size: 0.75rem; }
+.split-row { display: grid; grid-template-columns: 6rem minmax(0, 1fr); align-items: center; gap: 10px; }
+.split-track { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.yr { text-align: center; padding: 6px 2px; font-size: 0.71875rem; color: var(--muted); background: var(--panel-alt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yr.tr { background: var(--m1-soft); color: var(--m1); font-weight: 600; }
+.yr.va { background: var(--pers-soft); color: var(--pers); font-weight: 600; }
+.yr.te { background: var(--ink); color: var(--paper); font-weight: 600; }
+.yr.se { background: transparent; outline: 1px dashed var(--ns); outline-offset: -1px; color: var(--ink); }
+
+/* tabelas de resultados */
+.table-wrapper { overflow-x: auto; }
+.bench-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.bench-table caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.bench-table th, .bench-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: middle; }
+.bench-table thead th { font: 600 0.6875rem/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--panel-alt); border-bottom: 1px solid var(--line); text-wrap: balance; }
+.bench-table tbody th { font-weight: 500; }
+.bench-table th.num, .bench-table td.num { text-align: end; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bench-table tr.is-main th, .bench-table tr.is-main td { background: var(--m1-soft); font-weight: 600; }
+.bench-table tr[hidden] { display: none; }
+.mae-bar-wrap { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); white-space: nowrap; }
+.mae-bar { display: inline-block; height: 8px; background: var(--cams-raw); }
+tr.is-main .mae-bar { background: var(--m1); }
+tr.is-pers .mae-bar { background: var(--pers); }
+.role-tag { font: 500 0.6875rem/1.2 var(--font-mono); padding: 3px 6px; border: 1px solid var(--line); white-space: nowrap; color: var(--ink-2); }
+.role-op { border-color: var(--m1); color: var(--m1); }
+.role-ub { border-color: var(--m2); color: var(--m2); }
+
+/* controles dos gráficos */
+.toggle-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.sec .ctrl-btn { color: var(--ink); border-color: var(--line); background: var(--paper); }
+.sec .ctrl-btn:hover { border-color: var(--ink-2); }
+.sec .ctrl-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.toggle-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--line); background: var(--paper); font: 400 0.78125rem/1.25 var(--font-sans); cursor: pointer; user-select: none; }
+.toggle-chip input { margin: 0; accent-color: var(--m1); }
+.swatch { display: inline-block; width: 14px; height: 3px; }
+.readout-bar { margin-top: 8px; min-block-size: 2.2rem; padding: 7px 10px; background: var(--panel-alt); border: 1px solid var(--line); font: 400 0.78125rem/1.45 var(--font-mono); color: var(--ink-2); }
+.pa-attrib { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font: 400 0.71875rem/1.45 var(--font-mono); color: var(--attrib-ink); }
+.pa-attrib a { color: var(--attrib-ink); font-weight: 600; }
+
+/* cobertura da faixa */
+.calib-meter { display: grid; gap: 10px; }
+.calib-row { display: grid; gap: 4px; }
+.calib-head { display: flex; justify-content: space-between; gap: 12px; font: 400 0.78125rem/1.35 var(--font-mono); }
+.calib-head span:last-child { font-weight: 600; }
+.calib-track { position: relative; height: 10px; background: var(--panel-alt); }
+.calib-fill { height: 100%; background: var(--m1); }
+.calib-fill.warn { background: var(--thresh); }
+.calib-target { position: absolute; top: -3px; bottom: -3px; inset-inline-start: 80%; border-inline-start: 2px solid var(--ink); }
+
+/* limites por nível de evidência */
+.evidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; width: 100%; margin: 0 auto 18px; }
+.ev-card { padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); }
+.ev-badge { display: inline-block; margin-bottom: 10px; padding: 3px 7px; font: 600 0.6875rem/1.2 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid currentColor; }
+.ev-m { color: var(--m1); }
+.ev-d { color: var(--ink); }
+.ev-h { color: var(--ns); border-style: dashed; }
+.ev-card ul { margin: 0; padding-inline-start: 1.05rem; display: grid; gap: 9px; font-size: 0.875rem; line-height: 1.5; }
+
+/* próximos passos */
+.spec-list { list-style: none; margin: 0 auto; padding: 0; width: 100%; border-top: 1px solid var(--line); }
+.spec-list li { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 4px 16px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 0.9375rem; line-height: 1.55; }
+.spec-key { font: 600 0.75rem/1.6 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--m1); }
+
+/* referências e rodapé */
+ol.refs { width: 100%; max-width: 78ch; margin: 0; padding-inline-start: 1.4rem; font-size: 0.90625rem; line-height: 1.6; overflow-wrap: break-word; }
+ol.refs li { margin-bottom: 10px; padding-inline-start: 4px; }
+ol.refs li::marker { font: 500 0.75rem var(--font-mono); color: var(--m1); }
+.site-footer { padding: 40px clamp(20px, 5vw, 64px) 60px; row-gap: 14px; font-size: 0.84375rem; line-height: 1.55; color: var(--muted); }
+.site-footer p { margin: 0; text-align: start; }
+.disclaimer-box { width: 100%; display: grid; gap: 6px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); }
+
+/* ---------- elementos dos gráficos (SVG) ---------- */
+.svg-grid { stroke: var(--line); stroke-width: 1; }
+.svg-axis { stroke: var(--ink-2); stroke-width: 1; }
+.svg-tick { fill: var(--muted); font: 400 10.5px var(--font-sans); font-variant-numeric: tabular-nums; }
+.svg-unit { fill: var(--muted); font: 400 10px var(--font-sans); }
+.svg-note { fill: var(--muted); font: italic 400 10px var(--font-sans); }
+.svg-gap { fill: var(--gap-band); }
+.svg-thresh { stroke: var(--thresh); stroke-width: 1.1; stroke-dasharray: 3 3; }
+.svg-thresh-lbl { fill: var(--thresh); font: 500 10px var(--font-sans); }
+.svg-obs-fill { fill: var(--ink); opacity: 0.06; }
+.svg-obs-line { fill: none; stroke: var(--ink); stroke-width: 1.65; stroke-linejoin: round; }
+.svg-obs-dot { fill: var(--ink); }
+.svg-peak-ring { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.svg-peak-lbl { fill: var(--ink); font: 600 10.5px var(--font-sans); }
+.svg-m1-band { fill: var(--m1-soft); }
+.svg-m1-band-seg { stroke: var(--m1); stroke-opacity: 0.35; stroke-width: 4; }
+.svg-m1-line { fill: none; stroke: var(--m1); stroke-width: 1.9; stroke-linejoin: round; }
+.svg-m1-dot { fill: var(--m1); }
+.svg-per24-line { fill: none; stroke: var(--pers); stroke-width: 1.45; stroke-dasharray: 4 2.5; stroke-linejoin: round; }
+.svg-per24-dot { fill: var(--pers); }
+.svg-per00-line { fill: none; stroke: var(--per00); stroke-width: 1.35; stroke-dasharray: 2 2; stroke-linejoin: round; }
+.svg-per00-dot { fill: var(--per00); }
+.svg-cams7-line { fill: none; stroke: var(--cams); stroke-width: 1.45; stroke-dasharray: 6 3; stroke-linejoin: round; }
+.svg-cams7-dot { fill: var(--cams); }
+.svg-cap-note { fill: var(--muted); font: 500 10px var(--font-sans); }
+.svg-thresh-lbl, .svg-peak-lbl, .svg-note, .svg-cap-note { paint-order: stroke; stroke: var(--paper); stroke-width: 3px; stroke-linejoin: round; }
+
+/* ---------- modo slides ---------- */
+html[data-deck="true"] { scroll-snap-type: y mandatory; }
+html[data-deck="true"] .stage { min-height: 100vh; scroll-snap-align: start; scroll-snap-stop: always; }
+html[data-deck="true"] .sec { padding-top: 48px; }
+html[data-deck="true"] body { font-size: 1.09375rem; }
+
+/* ---------- alto contraste do sistema (Forced Colors) ---------- */
+@media (forced-colors: active) {
+  .rail-nav a[aria-current="true"] { border-inline-start-color: Highlight; outline: 1px solid Highlight; }
+  .ctrl-btn[aria-pressed="true"] { border-color: Highlight; outline: 2px solid Highlight; }
+  .calib-track, .calib-fill { border: 1px solid CanvasText; }
+}
+
+/* ---------- telas menores ---------- */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    z-index: 50; height: auto; flex-direction: row; align-items: center; gap: 10px;
+    padding: 8px 12px; overflow-x: auto; border-inline-end: 0; border-bottom: 1px solid var(--rail-line);
+  }
+  .rail-brand { padding: 0; flex: none; }
+  .rail-place, .rail-progress { display: none; }
+  .rail-nav { flex-direction: row; flex: none; }
+  .rail-nav a { display: block; padding: 6px 7px; border-inline-start: 0; border-bottom: 2px solid transparent; }
+  .rail-nav a span:not(.idx) { display: none; }
+  .rail-nav a[aria-current="true"] { border-bottom-color: var(--rail-accent); background: transparent; }
+  .hide-sm { display: none; }
+  .rail { align-self: start; }
+  .duo { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  body { font-size: 1rem; }
+  .capa { padding: 40px 16px 32px; }
+  .sec { padding: 52px 16px 28px; }
+  .site-footer { padding: 32px 16px 48px; }
+  .capa .lede { font-size: 1.03125rem; }
+  .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi:nth-child(2n) { border-inline-end: 0; margin-inline-end: 0; padding-inline-end: 0; }
+  .kpi-val { font-size: 1.75rem; }
+  .sec-idx { font-size: 0.8125rem; }
+  .fig { padding: 12px 12px 14px; margin: 20px 0 24px; }
+  .fig-tag { margin-inline-start: 0; }
+  .ods, .perguntas, .evidence-grid { grid-template-columns: minmax(0, 1fr); }
+  .ods p { border-inline-end: 0; border-bottom: 1px solid var(--line); }
+  .ods p:last-child { border-bottom: 0; }
+  ol.passos li { grid-template-columns: 2.2rem minmax(0, 1fr); }
+  ol.passos li > span:last-child { grid-column: 2; }
+  .spec-list li { grid-template-columns: minmax(0, 1fr); }
+  .split-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .yr { font-size: 0.625rem; padding: 5px 1px; }
+  .data-table thead { display: none; }
+  .data-table tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .data-table tr:last-child { border-bottom: 0; }
+  .data-table th, .data-table td { display: block; border: 0; padding: 3px 13px; }
+  .data-table tbody th { min-width: 0; }
+  .data-table td:last-child::before { content: "→ "; color: var(--m1); font-family: var(--font-mono); }
+  .chart > svg { min-width: 620px; }
+  .chart-sm > svg { min-width: 460px; }
+  .util-bar .ctrl-btn { padding: 6px 7px; }
+}
+@media (max-width: 420px) {
+  .kpi-strip { grid-template-columns: minmax(0, 1fr); }
+  .kpi { border-inline-end: 0; margin-inline-end: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .capa .kpi { border-bottom-color: var(--capa-line); }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#s1" data-i18n="n_skip">Pular para o conteúdo</a>
+
+<div class="layout">
+
+<aside class="rail">
+  <a class="rail-brand" href="#capa">
+    <span class="rail-mark">PM2.5</span>
+    <span class="rail-place" data-i18n="t0">PVH · 8,76°S 63,90°W</span>
+  </a>
+  <nav class="rail-nav" aria-label="Seções">
+    <a href="#capa" aria-current="true"><span class="idx">00</span><span data-i18n="n_s0">Capa</span></a>
+    <a href="#s1"><span class="idx">01</span><span data-i18n="n_s1">Contexto</span></a>
+    <a href="#s2"><span class="idx">02</span><span data-i18n="n_s2">Dados</span></a>
+    <a href="#s3"><span class="idx">03</span><span data-i18n="n_s3">Método</span></a>
+    <a href="#s4"><span class="idx">04</span><span data-i18n="n_s4">Anos típicos</span></a>
+    <a href="#s5"><span class="idx">05</span><span data-i18n="n_s5">Teste de 2024</span></a>
+    <a href="#s6"><span class="idx">06</span><span data-i18n="n_s6">Hora a hora</span></a>
+    <a href="#s7"><span class="idx">07</span><span data-i18n="n_s7">Por que 2024</span></a>
+    <a href="#s8"><span class="idx">08</span><span data-i18n="n_s8">Outros locais</span></a>
+    <a href="#s9"><span class="idx">09</span><span data-i18n="n_s9">Limites</span></a>
+    <a href="#s10"><span class="idx">10</span><span data-i18n="n_s10">Referências</span></a>
+  </nav>
+  <div class="rail-progress" aria-hidden="true"><span id="railBar"></span></div>
+  <div class="rail-ftl hide-sm">
+    <img src="assets/ftl-wordmark.png" width="1024" height="123" decoding="async" alt="Future Tech Leaders">
+  </div>
+</aside>
+
+<main>
+
+<!-- 00 · CAPA -->
+<header class="capa stage" id="capa" tabindex="-1">
+  <div class="capa-top">
+    <div class="partners-bar">
+      <img id="partnersLogo" src="assets/parceiros-ftl.png" width="1024" height="274" decoding="async" alt="Parceiros do Future Tech Leaders Brasil: Future Tech Leaders, Agência Espacial Brasileira (AEB), SDG AI Lab, ICPSD e UNDP">
+    </div>
+    <div class="util-bar" role="toolbar" aria-label="Controles da página">
+      <button type="button" class="ctrl-btn hide-sm" id="snapToggle" aria-pressed="false" title="Modo slides: uma seção por tela (atalho: S)" data-i18n="t8">Modo slides</button>
+      <button type="button" class="ctrl-btn" id="langToggle" aria-label="Switch to English" title="Switch to English">EN</button>
+      <button type="button" class="ctrl-btn" id="themeToggle" aria-label="Alternar tema claro ou escuro" data-i18n="theme">Tema</button>
+      <a class="ctrl-btn" href="https://github.com/giujjia/pm25-forecast-pvh" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+  <p class="kicker" data-i18n="n_kicker">Future Tech Leaders Brasil · Space Tech Bootcamp 2026 · Projeto final</p>
+  <h1 data-i18n="t10">Previsão do PM2.5 nas próximas 48 horas sob a fumaça das queimadas em Porto Velho</h1>
+  <p class="lede" data-i18n="n_lede">Uma rede neural Bi-LSTM prevê a curva hora a hora do PM2.5 nas 48 horas seguintes a partir de sensores PurpleAir corrigidos. Com as comparações fixadas antes do teste, ela errou menos que a persistência e a climatologia nos anos típicos; na seca extrema de 2024, superou a previsão bruta do CAMS, mas não a persistência nem o CAMS com correção de viés.</p>
+  <p class="byline"><span data-i18n="n_byline">Giullia de Souza Santos · Ciência da Computação, UNIR</span><span data-i18n="t0">PVH · 8,76°S 63,90°W</span><a href="https://github.com/giujjia/pm25-forecast-pvh" target="_blank" rel="noopener">github.com/giujjia/pm25-forecast-pvh</a></p>
+  <div class="spark">
+    <svg viewBox="0 0 1000 150" aria-hidden="true" focusable="false"><line class="spark-base" x1="6" x2="994" y1="128" y2="128"/><polygon class="spark-fill" points="6.0,121.5 14.1,121.5 22.2,120.9 30.3,118.4 38.4,122.2 46.5,123.5 54.6,122.0 62.7,122.5 70.8,123.8 78.9,122.8 87.0,121.8 95.1,121.8 103.2,123.8 111.3,123.4 111.3,128 6.0,128"/><path class="spark-line" d="M6.0,121.5L14.1,121.5L22.2,120.9L30.3,118.4L38.4,122.2L46.5,123.5L54.6,122.0L62.7,122.5L70.8,123.8L78.9,122.8L87.0,121.8L95.1,121.8L103.2,123.8L111.3,123.4"/><polygon class="spark-fill" points="216.6,109.1 224.7,114.4 232.8,103.9 240.9,104.1 249.0,111.9 257.0,97.1 265.1,98.8 273.2,109.6 281.3,104.8 289.4,101.0 297.5,96.3 305.6,96.4 313.7,95.8 321.8,94.6 329.9,117.8 338.0,106.4 346.1,94.5 354.2,100.7 362.3,76.3 370.4,48.3 378.5,70.7 386.6,108.7 394.7,104.7 402.8,99.8 410.9,101.8 419.0,110.1 427.1,109.7 435.2,106.5 443.3,87.0 451.4,69.4 459.5,72.2 467.6,47.6 475.7,12.0 483.8,33.6 491.9,58.1 500.0,71.5 508.1,66.8 516.2,47.8 524.3,41.1 532.4,76.7 540.5,77.5 548.6,64.1 556.7,55.0 564.8,65.2 572.9,73.3 581.0,76.8 589.1,94.9 597.2,98.8 605.3,89.7 613.4,77.6 621.5,66.2 629.6,74.1 637.7,78.4 645.8,58.5 653.9,93.5 662.0,108.9 670.1,86.5 678.2,63.2 686.3,85.9 694.4,83.4 702.5,99.1 710.6,90.3 718.7,101.0 726.8,102.1 734.9,121.6 743.0,123.1 751.0,121.9 759.1,123.0 767.2,120.1 775.3,117.7 783.4,93.9 791.5,110.1 799.6,120.4 807.7,123.9 815.8,122.5 823.9,121.2 832.0,119.9 840.1,117.1 848.2,118.9 856.3,110.7 864.4,118.3 872.5,119.3 880.6,120.3 888.7,119.1 896.8,120.6 904.9,124.0 913.0,124.3 921.1,122.6 929.2,121.8 937.3,123.4 945.4,120.4 953.5,122.6 961.6,124.9 969.7,122.8 977.8,121.4 985.9,121.2 994.0,120.6 994.0,128 216.6,128"/><path class="spark-line" d="M216.6,109.1L224.7,114.4L232.8,103.9L240.9,104.1L249.0,111.9L257.0,97.1L265.1,98.8L273.2,109.6L281.3,104.8L289.4,101.0L297.5,96.3L305.6,96.4L313.7,95.8L321.8,94.6L329.9,117.8L338.0,106.4L346.1,94.5L354.2,100.7L362.3,76.3L370.4,48.3L378.5,70.7L386.6,108.7L394.7,104.7L402.8,99.8L410.9,101.8L419.0,110.1L427.1,109.7L435.2,106.5L443.3,87.0L451.4,69.4L459.5,72.2L467.6,47.6L475.7,12.0L483.8,33.6L491.9,58.1L500.0,71.5L508.1,66.8L516.2,47.8L524.3,41.1L532.4,76.7L540.5,77.5L548.6,64.1L556.7,55.0L564.8,65.2L572.9,73.3L581.0,76.8L589.1,94.9L597.2,98.8L605.3,89.7L613.4,77.6L621.5,66.2L629.6,74.1L637.7,78.4L645.8,58.5L653.9,93.5L662.0,108.9L670.1,86.5L678.2,63.2L686.3,85.9L694.4,83.4L702.5,99.1L710.6,90.3L718.7,101.0L726.8,102.1L734.9,121.6L743.0,123.1L751.0,121.9L759.1,123.0L767.2,120.1L775.3,117.7L783.4,93.9L791.5,110.1L799.6,120.4L807.7,123.9L815.8,122.5L823.9,121.2L832.0,119.9L840.1,117.1L848.2,118.9L856.3,110.7L864.4,118.3L872.5,119.3L880.6,120.3L888.7,119.1L896.8,120.6L904.9,124.0L913.0,124.3L921.1,122.6L929.2,121.8L937.3,123.4L945.4,120.4L953.5,122.6L961.6,124.9L969.7,122.8L977.8,121.4L985.9,121.2L994.0,120.6"/><line class="spark-thresh" x1="6" x2="994" y1="109.2" y2="109.2"/><text class="spark-lbl" x="994" y="104.2" text-anchor="end">50 µg/m³</text><text class="spark-tick" x="6.0" y="146" data-i18n="t31">jul 2024</text><text class="spark-tick" x="257.0" y="146" data-i18n="t32">ago</text><text class="spark-tick" x="508.1" y="146" data-i18n="t33">set</text><text class="spark-tick" x="751.0" y="146" data-i18n="t34">out</text></svg>
+    <p class="spark-cap" data-i18n="n_spark">PM2.5 diário medido no sensor 39077, de julho a outubro de 2024 (Fig. 1)</p>
+  </div>
+  <div class="kpi-strip">
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t13">Dias de 2024 acima de 50 (sensor 39077)</span>
+        <span class="kpi-val c-warn">59 / 111<small data-i18n="t14">dias válidos</small></span>
+        <span class="kpi-sub" data-i18n="t15">Acima do limite diário PI-2 do CONAMA; 26 dias acima de 125 µg/m³ (nível de Atenção)</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t16">Anos típicos · validação cruzada 2021–2023</span>
+        <span class="kpi-val c-m1">12.0<small data-i18n="t17">µg/m³ MAE</small></span>
+        <span class="kpi-sub" data-i18n="t18">Rede principal: erro menor que o da persistência (15,7) e o da climatologia (20,9), p ≤ 0,0001 após Holm</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t19">Teste de 2024 · rede principal</span>
+        <span class="kpi-val c-m1">35.9<small data-i18n="t17">µg/m³ MAE</small></span>
+        <span class="kpi-sub" data-i18n="t20">Erro menor que o do CAMS bruto (45,8), do Ridge (40,3) e do XGBoost (43,5), todos significativos após Holm</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t21">2024 · contra referências simples</span>
+        <span class="kpi-val" data-i18n="t22">Não foi melhor<small>99 emissões</small></span>
+        <span class="kpi-sub" data-i18n="t23">Sem diferença significativa para a persistência (37,1) nem para o CAMS com viés móvel de 7 dias (36,7). Isso não prova empate.</span>
+      </div>
+    </div>
+</header>
+
+<!-- 01 · CONTEXTO E PERGUNTAS -->
+<section class="stage sec" id="s1" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">01</span><p class="kicker" data-i18n="n_k1">Contexto e perguntas</p><h2 data-i18n="n_h1">Na seca de 2024, o sensor 39077 registrou PM2.5 acima de 50 µg/m³ em 59 de 111 dias</h2></div>
+  <div class="prose"><p data-i18n="t40">Julho a outubro concentram 92,9% dos focos de fogo num raio de 30 km da cidade (média de 2012 a 2022; Jang &amp; Jung, 2023). Plataformas públicas (VigiAR, AlertAr Saúde, CPTEC/INPE) divulgam previsões globais do CAMS que, até onde a busca alcançou, não tinham sido avaliadas contra medições em Porto Velho.</p></div>
+
+  <figure class="fig">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 1</span><span class="fig-t" data-i18n="t24">Média diária de PM2.5 no sensor 39077, seca de 2024 (dias com pelo menos 18 h de dados)</span><span class="fig-tag" data-i18n="t25">Pico: 309,2 µg/m³ (28/08)</span></figcaption>
+    <div class="chart"><svg viewBox="0 0 740 256" role="img" aria-label="Média diária de PM2.5 corrigido no sensor 39077 de julho a outubro de 2024: 59 de 111 dias válidos acima de 50 microgramas por metro cúbico e pico de 309,2 em 28 de agosto.">
+<line x1="44" x2="726" y1="228.0" y2="228.0" class="svg-grid"/>
+<text x="37" y="231.5" text-anchor="end" class="svg-tick">0</text>
+<line x1="44" x2="726" y1="164.4" y2="164.4" class="svg-grid"/>
+<text x="37" y="167.9" text-anchor="end" class="svg-tick">100</text>
+<line x1="44" x2="726" y1="100.7" y2="100.7" class="svg-grid"/>
+<text x="37" y="104.2" text-anchor="end" class="svg-tick">200</text>
+<line x1="44" x2="726" y1="37.1" y2="37.1" class="svg-grid"/>
+<text x="37" y="40.6" text-anchor="end" class="svg-tick">300</text>
+<text x="37" y="13" text-anchor="end" class="svg-unit">µg/m³</text>
+<rect x="121.6" y="18" width="61.0" height="210" class="svg-gap"/>
+<text x="152.1" y="107.1" text-anchor="middle" class="svg-note" data-i18n="t26">lacuna de 15 a 26/07</text>
+<text x="152.1" y="119.1" text-anchor="middle" class="svg-note" data-i18n="t27">(nenhum dia com ≥ 18 h)</text>
+<polygon points="44.0,217.0 49.5,217.0 55.1,215.9 60.6,211.7 66.2,218.1 71.7,220.4 77.3,217.9 82.8,218.6 88.4,220.8 93.9,219.1 99.4,217.5 105.0,217.5 110.5,220.9 116.1,220.2 116.1,228.0 110.5,228.0 105.0,228.0 99.4,228.0 93.9,228.0 88.4,228.0 82.8,228.0 77.3,228.0 71.7,228.0 66.2,228.0 60.6,228.0 55.1,228.0 49.5,228.0 44.0,228.0" class="svg-obs-fill"/>
+<polygon points="188.2,196.0 193.7,204.9 199.3,187.1 204.8,187.5 210.3,200.6 215.9,175.5 221.4,178.4 227.0,196.8 232.5,188.7 238.1,182.2 243.6,174.2 249.2,174.4 254.7,173.3 260.2,171.4 265.8,210.7 271.3,191.4 276.9,171.1 282.4,181.7 288.0,140.2 293.5,92.8 299.1,130.7 304.6,195.3 310.1,188.5 315.7,180.2 321.2,183.6 326.8,197.6 332.3,196.9 337.9,191.5 343.4,158.5 349.0,128.6 354.5,133.3 360.0,91.6 365.6,31.2 371.1,67.8 376.7,109.4 382.2,132.2 387.8,124.1 393.3,91.9 398.9,80.6 404.4,140.9 410.0,142.3 415.5,119.6 421.0,104.1 426.6,121.5 432.1,135.1 437.7,141.1 443.2,171.8 448.8,178.4 454.3,163.0 459.9,142.4 465.4,123.2 470.9,136.6 476.5,143.9 482.0,110.1 487.6,169.4 493.1,195.6 498.7,157.5 504.2,118.0 509.8,156.5 515.3,152.4 520.8,178.9 526.4,164.1 531.9,182.2 537.5,184.0 543.0,217.1 548.6,219.7 554.1,217.6 559.7,219.6 565.2,214.6 570.7,210.6 576.3,170.1 581.8,197.6 587.4,215.1 592.9,221.0 598.5,218.7 604.0,216.5 609.6,214.3 615.1,209.5 620.7,212.5 626.2,198.6 631.7,211.5 637.3,213.3 642.8,214.9 648.4,212.9 653.9,215.5 659.5,221.2 665.0,221.8 670.6,218.8 676.1,217.5 681.6,220.2 687.2,215.1 692.7,218.8 698.3,222.7 703.8,219.2 709.4,216.8 714.9,216.5 720.5,215.5 720.5,228.0 714.9,228.0 709.4,228.0 703.8,228.0 698.3,228.0 692.7,228.0 687.2,228.0 681.6,228.0 676.1,228.0 670.6,228.0 665.0,228.0 659.5,228.0 653.9,228.0 648.4,228.0 642.8,228.0 637.3,228.0 631.7,228.0 626.2,228.0 620.7,228.0 615.1,228.0 609.6,228.0 604.0,228.0 598.5,228.0 592.9,228.0 587.4,228.0 581.8,228.0 576.3,228.0 570.7,228.0 565.2,228.0 559.7,228.0 554.1,228.0 548.6,228.0 543.0,228.0 537.5,228.0 531.9,228.0 526.4,228.0 520.8,228.0 515.3,228.0 509.8,228.0 504.2,228.0 498.7,228.0 493.1,228.0 487.6,228.0 482.0,228.0 476.5,228.0 470.9,228.0 465.4,228.0 459.9,228.0 454.3,228.0 448.8,228.0 443.2,228.0 437.7,228.0 432.1,228.0 426.6,228.0 421.0,228.0 415.5,228.0 410.0,228.0 404.4,228.0 398.9,228.0 393.3,228.0 387.8,228.0 382.2,228.0 376.7,228.0 371.1,228.0 365.6,228.0 360.0,228.0 354.5,228.0 349.0,228.0 343.4,228.0 337.9,228.0 332.3,228.0 326.8,228.0 321.2,228.0 315.7,228.0 310.1,228.0 304.6,228.0 299.1,228.0 293.5,228.0 288.0,228.0 282.4,228.0 276.9,228.0 271.3,228.0 265.8,228.0 260.2,228.0 254.7,228.0 249.2,228.0 243.6,228.0 238.1,228.0 232.5,228.0 227.0,228.0 221.4,228.0 215.9,228.0 210.3,228.0 204.8,228.0 199.3,228.0 193.7,228.0 188.2,228.0" class="svg-obs-fill"/>
+<line x1="44" x2="726" y1="196.2" y2="196.2" class="svg-thresh"/>
+<text x="724" y="192.2" text-anchor="end" class="svg-thresh-lbl" data-i18n="t28">50 µg/m³ · PI-2 do CONAMA (59/111 d)</text>
+<line x1="44" x2="726" y1="148.5" y2="148.5" class="svg-thresh"/>
+<text x="724" y="144.5" text-anchor="end" class="svg-thresh-lbl" data-i18n="t29">125 µg/m³ · Atenção (26/111 d)</text>
+<path d="M44.0,217.0L49.5,217.0L55.1,215.9L60.6,211.7L66.2,218.1L71.7,220.4L77.3,217.9L82.8,218.6L88.4,220.8L93.9,219.1L99.4,217.5L105.0,217.5L110.5,220.9L116.1,220.2M188.2,196.0L193.7,204.9L199.3,187.1L204.8,187.5L210.3,200.6L215.9,175.5L221.4,178.4L227.0,196.8L232.5,188.7L238.1,182.2L243.6,174.2L249.2,174.4L254.7,173.3L260.2,171.4L265.8,210.7L271.3,191.4L276.9,171.1L282.4,181.7L288.0,140.2L293.5,92.8L299.1,130.7L304.6,195.3L310.1,188.5L315.7,180.2L321.2,183.6L326.8,197.6L332.3,196.9L337.9,191.5L343.4,158.5L349.0,128.6L354.5,133.3L360.0,91.6L365.6,31.2L371.1,67.8L376.7,109.4L382.2,132.2L387.8,124.1L393.3,91.9L398.9,80.6L404.4,140.9L410.0,142.3L415.5,119.6L421.0,104.1L426.6,121.5L432.1,135.1L437.7,141.1L443.2,171.8L448.8,178.4L454.3,163.0L459.9,142.4L465.4,123.2L470.9,136.6L476.5,143.9L482.0,110.1L487.6,169.4L493.1,195.6L498.7,157.5L504.2,118.0L509.8,156.5L515.3,152.4L520.8,178.9L526.4,164.1L531.9,182.2L537.5,184.0L543.0,217.1L548.6,219.7L554.1,217.6L559.7,219.6L565.2,214.6L570.7,210.6L576.3,170.1L581.8,197.6L587.4,215.1L592.9,221.0L598.5,218.7L604.0,216.5L609.6,214.3L615.1,209.5L620.7,212.5L626.2,198.6L631.7,211.5L637.3,213.3L642.8,214.9L648.4,212.9L653.9,215.5L659.5,221.2L665.0,221.8L670.6,218.8L676.1,217.5L681.6,220.2L687.2,215.1L692.7,218.8L698.3,222.7L703.8,219.2L709.4,216.8L714.9,216.5L720.5,215.5" fill="none" class="svg-obs-line"/>
+<circle cx="365.6" cy="31.2" r="4" class="svg-peak-ring"/>
+<text x="373.6" y="35.2" class="svg-peak-lbl" data-i18n="t30">309,2 µg/m³ (28/08)</text>
+<line x1="44" x2="726" y1="228" y2="228" class="svg-axis"/>
+<line x1="44.0" x2="44.0" y1="228" y2="232" class="svg-axis"/>
+<text x="48.0" y="244" class="svg-tick" data-i18n="t31">jul 2024</text>
+<line x1="215.9" x2="215.9" y1="228" y2="232" class="svg-axis"/>
+<text x="219.9" y="244" class="svg-tick" data-i18n="t32">ago</text>
+<line x1="387.8" x2="387.8" y1="228" y2="232" class="svg-axis"/>
+<text x="391.8" y="244" class="svg-tick" data-i18n="t33">set</text>
+<line x1="554.1" x2="554.1" y1="228" y2="232" class="svg-axis"/>
+<text x="558.1" y="244" class="svg-tick" data-i18n="t34">out</text>
+<line x1="726.0" x2="726.0" y1="228" y2="232" class="svg-axis"/>
+</svg></div>
+    <div class="pa-attrib"><span data-i18n="t35">Data from PurpleAir (<a href="https://www.purpleair.com" target="_blank" rel="noopener">purpleair.com</a>), com a correção de Barkjohn et al. (2022).</span><span data-i18n="t36">Limiares da CONAMA 506/2024 mostrados só como referência de pesquisa (ver aviso no rodapé).</span></div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="n_l1">No dia de pico, 28/08, a média diária chegou a 309,2 µg/m³. Os valores são do PurpleAir corrigido, e não de um monitor de referência; os limiares aparecem só como referência de pesquisa.</p></div>
+  </figure>
+
+  <div class="ods">
+    <p class="ods-h" data-i18n="n_ods_t">Relação com os Objetivos de Desenvolvimento Sustentável</p>
+    <p data-i18n="n_ods3"><strong>ODS 3 · Saúde (meta 3.9)</strong>Em Rio Branco, o PM2.5 medido com PurpleAir corrigido esteve associado a +5,4% nas internações respiratórias a cada 10 µg/m³ (Coker et al., 2022). Prever os dias críticos permite alertas antecipados.</p>
+    <p data-i18n="n_ods11"><strong>ODS 11 · Cidades (meta 11.6)</strong>O indicador 11.6.2 é a média anual de PM2.5 nas cidades, a grandeza que o projeto mede com os sensores corrigidos.</p>
+    <p data-i18n="n_ods13"><strong>ODS 13 · Clima (meta 13.1)</strong>Secas extremas, como a de 2024, intensificam as queimadas; alertas antecipados aumentam a capacidade de adaptação.</p>
+  </div>
+
+  <h3 class="sub" data-i18n="n_q_t">As duas perguntas</h3>
+  <div class="perguntas">
+    <div class="pergunta"><span class="pergunta-k" data-i18n="t41">Pergunta 1</span><p data-i18n="t42">Quão exata é a previsão global bruta do CAMS contra as medições locais na estação da fumaça, e quanto uma correção simples de viés móvel de 7 dias recupera?</p></div>
+    <div class="pergunta"><span class="pergunta-k" data-i18n="t43">Pergunta 2</span><p data-i18n="t44">Uma Bi-LSTM codificador-decodificador, treinada com o histórico dos sensores locais e usável na prática, prevê as próximas 48 horas de PM2.5 (com os quantis de 10% a 90%) melhor que a persistência e o CAMS?</p></div>
+  </div>
+  <div class="ressalva"><span class="ressalva-k" data-i18n="t45">Ressalva sobre o alvo</span><span data-i18n="t46">Porto Velho não tinha estação permanente de referência de PM2.5 até 2025; a estação FioAres, da Fiocruz, opera desde julho de 2026 (equipamento e método ainda a confirmar). Todas as métricas usam o PM2.5 dos PurpleAir, com conferência dos canais A/B e a correção de Barkjohn et al. (2022), e não medições de referência.</span></div>
+</section>
+
+<!-- 02 · DADOS -->
+<section class="stage sec" id="s2" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">02</span><p class="kicker" data-i18n="n_k2">Dados</p><h2 data-i18n="n_h2">Quatro fontes de dados, cada uma com um papel</h2></div>
+  <div class="prose"><p data-i18n="n_p2">Só entra numa previsão o que já estaria disponível no momento em que ela é emitida, à meia-noite local (04 UTC). O alvo é sempre o PM2.5 medido pelos sensores PurpleAir corrigidos.</p></div>
+  <div class="tw">
+    <table class="data-table">
+      <thead><tr><th scope="col" data-i18n="n_th1">Fonte</th><th scope="col" data-i18n="n_th2">O que traz</th><th scope="col" data-i18n="n_th3">Papel</th></tr></thead>
+      <tbody>
+        <tr><th scope="row" data-i18n="n_r1f">PurpleAir · sensores de baixo custo</th><td data-i18n="n_r1d">PM2.5 horário, com conferência dos canais A e B e correção de Barkjohn et al. (2022); 6 sensores em 5 locais</td><td data-i18n="n_r1p">Alvo e entrada (histórico de 72 h). Treino: 39077 e 56831. Avaliação fora do treino: 3 sensores urbanos em 2 locais e 1 rural (Cuniã).</td></tr>
+        <tr><th scope="row" data-i18n="n_r2f">ERA5 · reanálise (Copernicus)</th><td data-i18n="n_r2d">Tempo horário na célula do sensor e na média da região</td><td data-i18n="n_r2p">Entrada da M2. Na variante “tempo perfeito”, também as horas futuras observadas: um limite superior, e não uma previsão.</td></tr>
+        <tr><th scope="row" data-i18n="n_r3f">NASA FIRMS · VIIRS, NOAA-20</th><td data-i18n="n_r3d">Focos de fogo e potência radiativa do fogo (FRP), em anéis de até 1000 km</td><td data-i18n="n_r3p">Entrada da M3</td></tr>
+        <tr><th scope="row" data-i18n="n_r4f">CAMS · previsão global (Copernicus)</th><td data-i18n="n_r4d">PM2.5 previsto pela rodada das 12 UTC do dia anterior</td><td data-i18n="n_r4p">Adversário no teste de 2024: bruto e com viés móvel de 7 dias</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fig-note" data-i18n="t197">Outras fontes de dados: reanálise ERA5 (Copernicus Climate Change Service) · previsão global de composição atmosférica do CAMS (Copernicus Atmosphere Monitoring Service) · focos ativos VIIRS NOAA-20 (NASA FIRMS). Os dados brutos e os pesos treinados não são redistribuídos; para reproduzir, use suas chaves de API com os scripts de <code>src/ingest/</code>.</p>
+</section>
+
+<!-- 03 · MÉTODO -->
+<section class="stage sec" id="s3" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">03</span><p class="kicker" data-i18n="n_k3">Método</p><h2 data-i18n="n_h3">Anos separados, regras fixadas antes e um teste aberto uma única vez</h2></div>
+  <div class="chips"><span class="meta-pill" data-i18n="t49">40 testes automáticos</span><span class="meta-pill" data-i18n="t50">embargo de 48 h</span><span class="meta-pill" data-i18n="t51">Previsão emitida à 0h local (04 UTC)</span></div>
+  <ol class="passos">
+    <li><span class="passo-k" data-i18n="t60">Alvo</span><span data-i18n="t61">A hora é descartada quando os canais A e B diferem em mais de 5 µg/m³ e 70%. Correção de Barkjohn et al. (2022), rótulo no fim da hora; o alvo nunca é interpolado.</span></li>
+    <li><span class="passo-k" data-i18n="n_m2k">Entradas</span><span data-i18n="n_m2">Três versões: M1 (72 h de PM2.5 e calendário), M2 (M1 + tempo do ERA5) e M3 (M2 + fogo do FIRMS). As entradas candidatas entram por uma regra fixada antes de olhar a relação delas com o PM2.5, refeita só com os anos de treino de cada dobra.</span></li>
+    <li><span class="passo-k" data-i18n="t62">Modelo</span><span data-i18n="t63">Bi-LSTM codificador-decodificador com atenção temporal (Bahdanau). Lê as últimas 72 h e prevê cada hora de +1 a +48 h com os quantis de 10%, 50% e 90%; perda pinball em log(1 + PM2.5); média de 3 sementes.</span></li>
+    <li><span class="passo-k" data-i18n="n_m4k">Referências</span><span data-i18n="n_m4">Persistência (o valor da 0h repetido), persistência das últimas 24 h, climatologia (mês × hora), Ridge e XGBoost com as mesmas entradas e, no teste de 2024, a previsão global do CAMS, bruta e com viés móvel de 7 dias.</span></li>
+    <li><span class="passo-k" data-i18n="n_m5k">Validação</span><span data-i18n="n_m5">Validação cruzada temporal com três dobras (anos avaliados 2021, 2022 e 2023) e embargo de 48 h. A versão é escolhida até 2% do melhor MAE pelo menor escore de Brier para “dia acima de 50 µg/m³”.</span></li>
+    <li><span class="passo-k" data-i18n="t64">Trava de 2024</span><span data-i18n="t65">Todo script que toca em 2024 se recusa a rodar sem <code>--abrir</code>. O teste inteiro rodou antes em 2023 (<code>--ensaio</code>); depois, 2024 foi aberto uma única vez.</span></li>
+    <li><span class="passo-k" data-i18n="n_m7k">Métrica e testes</span><span data-i18n="n_m7">Métrica principal: erro absoluto médio (MAE) da mediana prevista de +1 a +48 h, nas previsões emitidas à 0h local na seca (jul–out), nos dois sensores do treino. As diferenças são testadas com Diebold–Mariano (correção de Harvey, Leybourne e Newbold) e ajuste de Holm.</span></li>
+  </ol>
+
+  <figure class="fig">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 2</span><span class="fig-t" data-i18n="t52">Anos usados em treino, validação e teste</span><span class="fig-s" data-i18n="t53">Só dados disponíveis na hora da previsão</span></figcaption>
+    <div class="split-bars" aria-label="Anos de treino, validação e teste de 2020 a 2026">
+          <div class="split-row">
+            <span data-i18n="t54">Dobra 1</span>
+            <div class="split-track"><span class="yr tr">2020 Tr</span><span class="yr va">2021 Val</span><span class="yr">2022</span><span class="yr">2023</span><span class="yr">2024</span><span class="yr">2025</span><span class="yr">2026</span></div>
+          </div>
+          <div class="split-row">
+            <span data-i18n="t55">Dobra 2</span>
+            <div class="split-track"><span class="yr tr">2020 Tr</span><span class="yr tr">2021 Tr</span><span class="yr va">2022 Val</span><span class="yr">2023</span><span class="yr">2024</span><span class="yr">2025</span><span class="yr">2026</span></div>
+          </div>
+          <div class="split-row">
+            <span data-i18n="t56">Dobra 3</span>
+            <div class="split-track"><span class="yr tr">2020 Tr</span><span class="yr tr">2021 Tr</span><span class="yr tr">2022 Tr</span><span class="yr va">2023 Val</span><span class="yr">2024</span><span class="yr">2025</span><span class="yr">2026</span></div>
+          </div>
+          <div class="split-row">
+            <span data-i18n="t4">Teste 2024</span>
+            <div class="split-track"><span class="yr tr">2020 Tr</span><span class="yr tr">2021 Tr</span><span class="yr tr">2022 Tr</span><span class="yr va">2023 Val</span><span class="yr te" data-i18n="t57">2024 Teste</span><span class="yr">2025</span><span class="yr se" data-i18n="t58">2026 Cego</span></div>
+          </div>
+        </div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="t59">Os modelos de 2024 são os da dobra 3: treinados em 2020–2022, com a parada antecipada em 2023. Um embargo de 48 h separa o treino da avaliação. 2026 fica selado para um teste cego.</p></div>
+  </figure>
+</section>
+
+<!-- 04 · RESULTADOS: ANOS TÍPICOS -->
+<section class="stage sec" id="s4" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">04</span><p class="kicker" data-i18n="n_k4">Resultados · anos típicos</p><h2 data-i18n="n_h4">Em anos típicos, a rede errou menos que a persistência e a climatologia</h2></div>
+  <div class="prose"><p data-i18n="n_p4">Na validação cruzada de 2021 a 2023, a rede principal, sem tempo futuro, teve erro médio de 12,0 µg/m³, contra 15,7 da persistência e 20,9 da climatologia, com diferença significativa após Holm. Contra o Ridge e o XGBoost, a diferença foi pequena e não significativa.</p></div>
+  <figure class="fig fig-estreita">
+      <figcaption class="fig-head"><span class="fig-n">Fig. 3</span><span class="fig-t" data-i18n="t66">MAE na validação cruzada (µg/m³), 2021–2023, 651 pares</span><span class="fig-s" data-i18n="t67">Escolha: até 2% do melhor MAE, menor escore de Brier</span></figcaption>
+      <div class="chart chart-sm"><svg viewBox="0 0 540 185" role="img" aria-label="MAE da validação cruzada nas versões M1, M2 e M3; o erro sobe quando entram as 60 entradas de fogo do FIRMS na M3.">
+                  <line x1="165" x2="520" y1="20" y2="20" class="svg-grid"/>
+                  <line x1="165" x2="520" y1="152" y2="152" class="svg-axis"/>
+                  <text x="165" y="168" text-anchor="middle" class="svg-tick">8</text>
+                  <text x="283.3" y="168" text-anchor="middle" class="svg-tick">12</text>
+                  <text x="401.7" y="168" text-anchor="middle" class="svg-tick">16</text>
+                  <text x="520" y="168" text-anchor="middle" class="svg-tick">20</text>
+                  <!-- M1 operational -->
+                  <text x="157" y="42" text-anchor="end" class="svg-tick" style="fill:var(--m1);font-weight:600" data-i18n="t70">M1 · 5 entradas/h</text>
+                  <rect x="165" y="32" width="117.9" height="12" fill="var(--m1)"/>
+                  <text x="289" y="42" class="svg-tick" style="fill:var(--m1);font-weight:600">12.0</text>
+                  <!-- M2 no future -->
+                  <text x="157" y="66" text-anchor="end" class="svg-tick" data-i18n="t71">M2 · 23 entradas/h</text>
+                  <rect x="165" y="56" width="132.3" height="12" fill="var(--cams)"/>
+                  <text x="303" y="66" class="svg-tick">12.5</text>
+                  <!-- M3 no future -->
+                  <text x="157" y="90" text-anchor="end" class="svg-tick" style="fill:var(--m3)" data-i18n="t72">M3 + fogo · 83 entradas/h</text>
+                  <rect x="165" y="80" width="196.0" height="12" fill="var(--m3)"/>
+                  <text x="367" y="90" class="svg-tick" style="fill:var(--m3)">14.6</text>
+                  <!-- M2 ERA5 upper bound -->
+                  <text x="157" y="116" text-anchor="end" class="svg-tick" style="fill:var(--m2)" data-i18n="t73">M2 + ERA5 (limite superior)</text>
+                  <rect x="165" y="106" width="95.6" height="12" fill="var(--m2)"/>
+                  <text x="267" y="116" class="svg-tick" style="fill:var(--m2)">11.2</text>
+                  <!-- Persistence -->
+                  <text x="157" y="140" text-anchor="end" class="svg-tick" style="fill:var(--pers)" data-i18n="t74">Persistência (0h)</text>
+                  <rect x="165" y="130" width="226.5" height="12" fill="var(--pers)"/>
+                  <text x="398" y="140" class="svg-tick" style="fill:var(--pers)">15.7</text>
+                </svg></div>
+      <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><div data-i18n="t75"><strong>Medido:</strong> com mais entradas por hora, de 5 (M1) para 23 (M2, tempo do ERA5) e 83 (M3, potência do fogo do NASA FIRMS), a melhor época da parada antecipada veio mais cedo (6–18 na M1, 2–7 na M2, 1–5 na M3). Da M2 para a M3, o erro subiu nas três famílias de modelo: Bi-LSTM (12,5 → 14,6), Ridge (12,6 → 13,6) e XGBoost (12,5 → 12,8). Da M1 para a M2, só o XGBoost melhorou (13,1 → 12,5). A M3 não foi ao teste de 2024. Por que as entradas de fogo não ajudaram é hipótese não testada (ver Limites).</div></div>
+    </figure>
+    <figure class="fig">
+      <figcaption class="fig-head"><span class="fig-n">Fig. 4</span><span class="fig-t" data-i18n="n_f4">MAE por ano avaliado e na média (µg/m³)</span></figcaption>
+      <div class="tw"><table class="bench-table">
+                  <thead>
+                    <tr><th data-i18n="t76">Modelo</th><th class="num">2021 (d1)</th><th class="num">2022 (d2)</th><th class="num">2023 (d3)</th><th class="num" data-i18n="t77">Média VC</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-main"><th scope="row" data-i18n="t78">Bi-LSTM M1 (principal)</th><td class="num">15.1</td><td class="num">11.9</td><td class="num">9.2</td><td class="num">12.0</td></tr>
+                    <tr><th scope="row" data-i18n="t79">Bi-LSTM M2 + ERA5 (limite superior)</th><td class="num">14.1</td><td class="num">10.8</td><td class="num">9.0</td><td class="num">11.2</td></tr>
+                    <tr><th scope="row">Ridge M1 / M2 + ERA5</th><td class="num">15.7 / 15.3</td><td class="num">12.2 / 12.1</td><td class="num">9.6 / 9.2</td><td class="num">12.4 / 12.1</td></tr>
+                    <tr><th scope="row">XGBoost M2 / M2 + ERA5</th><td class="num">16.4 / 16.1</td><td class="num">11.8 / 11.8</td><td class="num">9.5 / 9.0</td><td class="num">12.5 / 12.2</td></tr>
+                    <tr><th scope="row" data-i18n="t80">Bi-LSTM M3 (+ fogo)</th><td class="num">18.7</td><td class="num">13.3</td><td class="num">12.1</td><td class="num">14.6</td></tr>
+                    <tr class="is-pers"><th scope="row" data-i18n="t74">Persistência (0h)</th><td class="num">21.1</td><td class="num">14.2</td><td class="num">11.9</td><td class="num">15.7</td></tr>
+                    <tr><th scope="row" data-i18n="t81">Climatologia</th><td class="num">24.2</td><td class="num">20.2</td><td class="num">18.5</td><td class="num">20.9</td></tr>
+                  </tbody>
+                </table></div>
+      <p class="fig-note" data-i18n="t82">Teste de Diebold–Mariano em 362 emissões: a rede principal teve erro menor que o da persistência (−3,79 µg/m³, p_Holm = 2,1×10⁻⁹) e o da persistência de 24 h (−3,01 µg/m³, p_Holm = 1,4×10⁻¹²).</p>
+    </figure>
+</section>
+
+<!-- 05 · RESULTADOS: TESTE DE 2024 -->
+<section class="stage sec" id="s5" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">05</span><p class="kicker" data-i18n="n_k5">Resultados · teste de 2024</p><h2 data-i18n="t84">Em 2024, a rede superou o CAMS bruto, mas não a persistência nem o CAMS com viés móvel</h2></div>
+  <div class="prose"><p data-i18n="n_p5">O ano de 2024 foi aberto uma única vez, depois do pré-registro, com os modelos da dobra 3. As comparações usam os 197 pares emissão–sensor comuns a todos os modelos (99 emissões).</p></div>
+  <figure class="fig">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 5</span><span class="fig-t" id="bench-caption" data-i18n="t87">Erro da mediana prevista de +1 a +48 h (MAE, µg/m³), sensores do treino 39077 e 56831</span><span class="fig-s" data-i18n="t88">Ordem pelo MAE de 2024 · 197 pares, 99 emissões</span></figcaption>
+    <div class="toggle-bar" role="group" aria-label="Filtrar modelos">
+          <button type="button" class="ctrl-btn" data-filter="all" aria-pressed="true" data-i18n="t85">Os 9 modelos</button>
+          <button type="button" class="ctrl-btn" data-filter="op" aria-pressed="false" data-i18n="t86">Ocultar o limite superior (ERA5)</button>
+        </div>
+    <div tabindex="0" role="region" aria-labelledby="bench-caption" class="table-wrapper">
+          <table class="bench-table" id="benchTable">
+            <caption data-i18n="t89">Erro absoluto médio na validação cruzada (2021–2023) e no teste de 2024, nos 197 pares emissão–sensor comuns.</caption>
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="t62">Modelo</th>
+                <th scope="col" data-i18n="t90">Tipo</th>
+                <th scope="col" class="num" data-i18n="t91">VC 21–23</th>
+                <th scope="col" data-i18n="t92">MAE teste 2024</th>
+                <th scope="col" class="num">MAE &gt;50</th>
+              </tr>
+            </thead>
+            <tbody id="benchBody">
+              <tr class="is-main" data-kind="op">
+                <th scope="row" data-i18n="t93">Bi-LSTM M1 (sem tempo futuro)</th>
+                <td><span class="role-tag role-op" data-i18n="t94">Principal</span></td>
+                <td class="num">12.0</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:65px"></span><span class="num">35.9</span></div></td>
+                <td class="num">31.8</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row" data-i18n="t95">CAMS + viés móvel 7 d</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">—</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:66px"></span><span class="num">36.7</span></div></td>
+                <td class="num">32.5</td>
+              </tr>
+              <tr class="is-pers" data-kind="op">
+                <th scope="row" data-i18n="t97">Persistência (0h local)</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">15.7</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:67px"></span><span class="num">37.1</span></div></td>
+                <td class="num">32.5</td>
+              </tr>
+              <tr data-kind="ub">
+                <th scope="row" data-i18n="t98">Bi-LSTM M2 (+ tempo futuro do ERA5)</th>
+                <td><span class="role-tag role-ub" data-i18n="t99">Limite superior</span></td>
+                <td class="num">11.2</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:69px;background:var(--m2)"></span><span class="num">38.0</span></div></td>
+                <td class="num">34.2</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row">Ridge (M1 / M2 + ERA5)</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">12.4 / 12.1</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:73px"></span><span class="num">40.3 / 38.1</span></div></td>
+                <td class="num">35.5 / 33.7</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row" data-i18n="t100">Persistência das últimas 24 h</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">15.0</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:75px"></span><span class="num">41.5</span></div></td>
+                <td class="num">36.1</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row">XGBoost (M2 / M2 + ERA5)</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">12.5 / 12.2</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:79px"></span><span class="num">43.5 / 42.5</span></div></td>
+                <td class="num">38.8 / 38.4</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row" data-i18n="t101">Previsão global bruta do CAMS</th>
+                <td><span class="role-tag" data-i18n="t102">Publicada</span></td>
+                <td class="num">—</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:83px"></span><span class="num">45.8</span></div></td>
+                <td class="num">39.0</td>
+              </tr>
+              <tr data-kind="op">
+                <th scope="row" data-i18n="t103">Climatologia (mês × hora, 2020–2022)</th>
+                <td><span class="role-tag" data-i18n="t96">Referência</span></td>
+                <td class="num">20.9</td>
+                <td><div class="mae-bar-wrap"><span class="mae-bar" style="inline-size:100px"></span><span class="num">55.1</span></div></td>
+                <td class="num">47.2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+    <p class="fig-note" data-i18n="t104">Ridge e XGBoost: o primeiro valor é a versão comparada com a rede principal; o segundo, com o limite superior. O CAMS não entrou na validação cruzada. MAE &gt;50: erro na parte da curva acima de 50 µg/m³, a média de |max(previsto, 50) − max(medido, 50)| (Taggart, 2022). O tempo futuro observado (ERA5) não melhorou a rede de forma significativa em 2024: −2,28 µg/m³ contra a M2 sem tempo futuro, IC 95% de −5,8 a +1,3.</p>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="n_l5">A rede principal teve o menor MAE da tabela, mas a diferença para o CAMS com viés móvel e para a persistência não foi significativa (Fig. 6). Todos os modelos erraram bem mais que nos anos típicos (seção 07).</p></div>
+  </figure>
+  <figure class="fig fig-estreita fig-dm">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 6</span><span class="fig-t" data-i18n="t105">Rede principal menos cada referência, com IC 95%</span><span class="fig-s" data-i18n="t106">Teste de Diebold–Mariano, ajuste de Holm</span></figcaption>
+    <div class="chart chart-sm"><svg id="dmForest" viewBox="0 0 490 250" role="img" aria-label="Diferenças de MAE entre a rede principal e sete referências em 2024, com intervalos de confiança de 95 por cento (Diebold-Mariano)."></svg></div>
+    <div class="readout-bar" id="dmReadout" data-i18n="t107">Aponte para uma linha para ver a diferença exata, o intervalo e o p ajustado. Ponto cheio: significativo após Holm.</div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><div data-i18n="t108"><strong>Pouco poder:</strong> com 99 emissões, os intervalos contra a persistência e o CAMS com viés móvel têm cerca de ±5–6 µg/m³ (p_Holm = 1,0 nos dois). O teste não mostra que a rede é melhor que eles, e isso não mostra que os erros são iguais.</div></div>
+  </figure>
+</section>
+
+<!-- 06 · ERRO HORA A HORA -->
+<section class="stage sec" id="s6" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">06</span><p class="kicker" data-i18n="n_k6">Erro hora a hora</p><h2 data-i18n="t110">O erro sobe e desce com a hora do dia</h2></div>
+  <div class="chips"><span class="meta-pill" data-i18n="t111">Previsão emitida à 0h local (UTC−4)</span><span class="meta-pill" data-i18n="t112">Maior erro: 8h local (+8 h e +32 h)</span></div>
+  <figure class="fig">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 7</span><span class="fig-t" data-i18n="t113">MAE em cada hora depois da previsão, 197 pares comuns a todos os modelos</span><span class="fig-s" data-i18n="t114">Estimativas pontuais; nenhum teste por hora foi planejado</span></figcaption>
+    <div class="toggle-bar" id="horSeriesToggles" aria-label="Mostrar ou ocultar modelos">
+                <label class="toggle-chip"><input type="checkbox" value="bilstm_M1_sem" checked><span class="swatch" style="background:var(--m1)"></span><span data-i18n="t115">M1 (principal)</span></label>
+                <label class="toggle-chip"><input type="checkbox" value="bilstm_M2_era5" checked><span class="swatch" style="background:var(--m2)"></span>M2 (ERA5)</label>
+                <label class="toggle-chip"><input type="checkbox" value="persistencia_-_-" checked><span class="swatch" style="background:var(--pers)"></span><span data-i18n="t116">Persistência</span></label>
+                <label class="toggle-chip"><input type="checkbox" value="cams_vies_N7_-" checked><span class="swatch" style="background:var(--cams)"></span><span data-i18n="t117">CAMS + viés 7 d</span></label>
+                <label class="toggle-chip"><input type="checkbox" value="cams_bruto_-_-" checked><span class="swatch" style="background:var(--cams-raw)"></span><span data-i18n="t118">CAMS bruto</span></label>
+              </div>
+    <div class="chart"><svg id="horAbsSvg" viewBox="0 0 1120 290" role="img" aria-label="Erro absoluto médio de +1 a +48 horas depois da previsão emitida à meia-noite local, em 197 pares comuns a todos os modelos, seca de 2024."></svg></div>
+    <div class="readout-bar" id="horAbsReadout" data-i18n="t119">Passe o ponteiro sobre o gráfico para ler o erro de cada modelo em cada hora (hora local, UTC−4).</div>
+    <div class="pa-attrib"><span data-i18n="t121">Data from PurpleAir (<a href="https://www.purpleair.com" target="_blank" rel="noopener">purpleair.com</a>) · Previsões: Powered by PurpleAir.</span></div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="t120"><strong>O que as curvas mostram:</strong> todos os modelos têm os maiores erros por volta das 8h local (+8 h e +32 h). As redes e o CAMS bruto têm os menores erros por volta das 18h local do dia 1 (+18 h). A persistência tem o menor erro nas primeiras horas. São estimativas pontuais: nenhum teste por hora foi planejado, e por que o erro segue a hora do dia não foi testado.</p></div>
+  </figure>
+</section>
+
+<!-- 07 · POR QUE 2024 FOI MAIS DIFÍCIL -->
+<section class="stage sec" id="s7" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">07</span><p class="kicker" data-i18n="n_k7">Por que 2024 foi mais difícil</p><h2 data-i18n="t123">2024 foi muito mais poluído que os anos de treino</h2></div>
+  <p class="aviso" data-i18n="t124">Interpretação apoiada nos dados abaixo, não uma causa testada.</p>
+  <div class="chips"><span class="meta-pill" data-i18n="t125">p99 de 2020–22: 116,1 µg/m³</span><span class="meta-pill" data-i18n="t126">Média de 2024: 86,7 µg/m³ (máx. 731,3)</span></div>
+  <div class="kpi-strip">
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t127">Nível de 2024 × treino</span>
+        <span class="kpi-val c-alto">86.7<small data-i18n="t128">µg/m³ de média</small></span>
+        <span class="kpi-sub" data-i18n="t129">Seca de 2024, média nas 48 h depois de cada previsão (máximo de 731,3). 99% das horas de treino (2020–2022) ficaram abaixo de 116,1 (máximo de 551,0).</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t130">Maior mediana prevista</span>
+        <span class="kpi-val c-m1">217.8<small>µg/m³</small></span>
+        <span class="kpi-sub" data-i18n="t131">Rede principal. M2 com ERA5: 176,7; XGBoost: 148,4. Máximo medido: 731,3.</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t132">Viés médio horário, 2024</span>
+        <span class="kpi-val c-alto">−27.9<small data-i18n="t133">µg/m³ (principal)</small></span>
+        <span class="kpi-sub" data-i18n="t134">M2 com ERA5 −30,7; XGBoost −38,0; persistência +1,3; CAMS com viés móvel −2,5. As redes preveem a mediana, que fica abaixo da média quando o PM2.5 é assimétrico à direita; parte do viés delas é esperada, e quanto não foi medido.</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label" data-i18n="t135">Alertas diários, dia D (habilidade de Brier)</span>
+        <span class="kpi-val c-pers">0.72 / 0.71<small data-i18n="t136">habilidade</small></span>
+        <span class="kpi-sub" data-i18n="t137">Rede principal contra a climatologia mensal: 0,72 para dias acima de 50 µg/m³ e 0,71 para dias acima de 125 µg/m³.</span>
+      </div>
+    </div>
+  <figure class="fig">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 8</span><span class="fig-t" data-i18n="t138">Sensor 39077: média diária medida × previsão para o próprio dia (jul–out 2024)</span></figcaption>
+    <div class="toggle-bar" id="trajLayerToggles" aria-label="Mostrar ou ocultar camadas da série diária">
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-obs" checked><span class="swatch" style="background:var(--ink)"></span><span data-i18n="t139">Medido</span></label>
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-m1" checked><span class="swatch" style="background:var(--m1)"></span><span data-i18n="t140">Rede principal (média das medianas horárias)</span></label>
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-band" checked><span class="swatch" style="background:var(--m1);opacity:.35;block-size:7px"></span><span data-i18n="t141">Média dos quantis horários de 10% a 90%</span></label>
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-per24" checked><span class="swatch" style="background:var(--pers)"></span><span data-i18n="t142">Persistência 24 h</span></label>
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-per00"><span class="swatch" style="background:var(--per00)"></span><span data-i18n="t143">Persistência 0h</span></label>
+            <label class="toggle-chip"><input type="checkbox" data-target="traj-cams7"><span class="swatch" style="background:var(--cams)"></span><span data-i18n="t117">CAMS + viés 7 d</span></label>
+          </div>
+    <div class="chart"><svg viewBox="0 0 780 276" role="img" aria-label="Média diária de PM2.5 no sensor 39077 em 2024 comparada à previsão da rede principal, à média dos quantis horários de 10 a 90 por cento, ao CAMS com viés móvel de 7 dias e às persistências.">
+<defs><clipPath id="traj-clip"><rect x="44" y="20" width="722" height="228"/></clipPath></defs>
+<line x1="44" x2="766" y1="248.0" y2="248.0" class="svg-grid"/>
+<text x="37" y="251.5" text-anchor="end" class="svg-tick">0</text>
+<line x1="44" x2="766" y1="180.9" y2="180.9" class="svg-grid"/>
+<text x="37" y="184.4" text-anchor="end" class="svg-tick">100</text>
+<line x1="44" x2="766" y1="113.9" y2="113.9" class="svg-grid"/>
+<text x="37" y="117.4" text-anchor="end" class="svg-tick">200</text>
+<line x1="44" x2="766" y1="46.8" y2="46.8" class="svg-grid"/>
+<text x="37" y="50.3" text-anchor="end" class="svg-tick">300</text>
+<text x="37" y="15" text-anchor="end" class="svg-unit">µg/m³</text>
+<line x1="44" x2="766" y1="214.5" y2="214.5" class="svg-thresh"/>
+<text x="48" y="210.5" class="svg-thresh-lbl" data-i18n="t144">50 µg/m³ (PI-2)</text>
+<line x1="44" x2="766" y1="164.2" y2="164.2" class="svg-thresh"/>
+<text x="48" y="160.2" class="svg-thresh-lbl" data-i18n="t145">125 µg/m³ (Atenção)</text>
+<g id="traj-band">
+<polygon points="44.0,232.8 49.9,226.5 55.7,227.5 61.6,226.2 67.5,229.9 73.3,230.0 73.3,242.0 67.5,241.9 61.6,240.6 55.7,241.0 49.9,240.6 44.0,243.0" class="svg-m1-band"/>
+<polygon points="214.2,164.7 220.1,180.3 226.0,198.3 231.8,156.9 237.7,176.7 243.6,197.4 249.4,162.8 255.3,165.9 261.2,149.4 267.1,151.4 272.9,161.0 278.8,166.3 284.7,201.9 290.5,189.9 296.4,165.9 302.3,138.8 308.1,117.1 314.0,100.8 319.9,160.4 325.8,183.2 331.6,178.6 337.5,160.9 343.4,189.1 349.2,181.3 355.1,180.1 361.0,162.9 366.8,139.2 372.7,107.8 378.6,123.1 384.5,94.7 390.3,72.0 396.2,78.8 402.1,110.9 407.9,119.2 413.8,111.9 419.7,85.2 425.5,99.8 431.4,138.3 437.3,122.7 443.2,99.9 449.0,105.9 454.9,119.0 460.8,117.3 466.6,130.4 472.5,166.6 478.4,150.7 484.2,142.8 490.1,142.0 496.0,127.0 501.9,125.5 507.7,134.2 513.6,128.9 519.5,195.2 525.3,192.1 531.2,154.7 537.1,152.4 542.9,149.2 548.8,166.6 554.7,174.0 560.6,176.6 566.4,172.0 572.3,193.0 578.2,229.7 584.0,231.2 589.9,228.4 595.8,227.3 601.6,223.2 607.5,213.1 613.4,184.6 619.3,211.3 625.1,233.1 631.0,231.7 636.9,231.7 642.7,219.5 648.6,222.9 654.5,210.0 660.3,205.6 660.3,235.7 654.5,237.0 648.6,240.9 642.7,240.0 636.9,243.5 631.0,243.7 625.1,244.2 619.3,237.2 613.4,228.4 607.5,237.9 601.6,241.0 595.8,242.4 589.9,242.6 584.0,243.8 578.2,243.4 572.3,231.6 566.4,224.3 560.6,226.0 554.7,225.1 548.8,222.5 542.9,216.0 537.1,217.0 531.2,218.1 525.3,231.7 519.5,232.4 513.6,209.2 507.7,211.1 501.9,207.8 496.0,208.2 490.1,213.4 484.2,213.8 478.4,217.2 472.5,222.7 466.6,209.7 460.8,205.2 454.9,205.8 449.0,201.3 443.2,198.9 437.3,206.9 431.4,212.5 425.5,199.2 419.7,194.1 413.8,203.1 407.9,205.8 402.1,203.2 396.2,192.1 390.3,189.4 384.5,197.1 378.6,206.8 372.7,201.4 366.8,212.4 361.0,221.4 355.1,228.0 349.2,228.4 343.4,230.7 337.5,220.5 331.6,227.5 325.8,229.2 319.9,220.5 314.0,199.0 308.1,204.5 302.3,212.7 296.4,222.2 290.5,231.4 284.7,235.6 278.8,222.9 272.9,220.6 267.1,216.8 261.2,215.5 255.3,221.7 249.4,220.8 243.6,233.5 237.7,225.7 231.8,217.6 226.0,233.4 220.1,226.3 214.2,220.1" class="svg-m1-band"/>
+<polygon points="683.8,223.9 689.7,224.7 695.6,234.2 701.4,235.1 707.3,234.2 713.2,232.4 719.0,231.9 724.9,231.3 730.8,234.9 736.7,232.8 742.5,234.9 748.4,231.8 754.3,230.8 760.1,227.7 760.1,242.3 754.3,243.2 748.4,243.5 742.5,244.4 736.7,243.8 730.8,244.4 724.9,243.4 719.0,243.5 713.2,243.7 707.3,244.2 701.4,244.5 695.6,244.2 689.7,241.4 683.8,241.2" class="svg-m1-band"/>
+<line x1="114.4" x2="114.4" y1="242.6" y2="231.6" class="svg-m1-band-seg"/>
+</g>
+<g id="traj-cams7" style="display:none">
+<path d="M44.0,240.8L49.9,240.6L55.7,235.8L61.6,239.6L67.5,240.4L73.3,240.3M114.4,240.2M214.2,212.1L220.1,215.2L226.0,182.8L231.8,190.2L237.7,204.8L243.6,208.6L249.4,207.1L255.3,196.9L261.2,205.2L267.1,213.0L272.9,195.6L278.8,212.3L284.7,214.9L290.5,208.8L296.4,215.7L302.3,181.6L308.1,135.5L314.0,151.8L319.9,116.1L325.8,185.1L331.6,193.6L337.5,194.4L343.4,195.6L349.2,216.8L355.1,223.9L361.0,205.6L366.8,148.9L372.7,192.9L378.6,174.2L384.5,57.6L390.3,20.0L396.2,66.5L402.1,112.6L407.9,114.2L413.8,130.0L419.7,69.4L425.5,146.9L431.4,136.6L437.3,141.9L443.2,125.7L449.0,139.8L454.9,131.9L460.8,151.6L466.6,166.5L472.5,196.9L478.4,184.2L484.2,183.7L490.1,136.1L496.0,155.0L501.9,143.8L507.7,118.7L513.6,123.7L519.5,202.9L525.3,219.0L531.2,186.4L537.1,141.4L542.9,165.3L548.8,182.1L554.7,187.0L560.6,178.3L566.4,194.8L572.3,206.0L578.2,232.4L584.0,240.2L589.9,239.3L595.8,240.6L601.6,216.1L607.5,209.5L613.4,230.0L619.3,233.3L625.1,237.3L631.0,235.2L636.9,230.5L642.7,235.4L648.6,230.5L654.5,227.9L660.3,223.4M683.8,237.4L689.7,234.7L695.6,230.6L701.4,239.1L707.3,238.7L713.2,236.3L719.0,235.3L724.9,236.9L730.8,239.8L736.7,240.6L742.5,239.4L748.4,241.0L754.3,240.0L760.1,238.1" fill="none" clip-path="url(#traj-clip)" class="svg-cams7-line"/>
+<circle cx="114.4" cy="240.2" r="2.3" class="svg-cams7-dot"/>
+<text x="396.3" y="31" class="svg-cap-note" data-i18n="t146">↑ pico do CAMS + viés 7 d cortado em 340 (chega a 585 µg/m³)</text>
+</g>
+<g id="traj-per24">
+<path d="M44.0,237.7L49.9,236.5L55.7,236.5L61.6,235.3L67.5,230.8L73.3,237.5M114.4,236.9M214.2,204.8L220.1,205.3L226.0,219.1L231.8,192.7L237.7,195.8L243.6,215.1L249.4,206.6L255.3,199.7L261.2,191.3L267.1,191.5L272.9,190.3L278.8,188.4L284.7,229.8L290.5,209.4L296.4,189.4L302.3,199.2L308.1,155.5L314.0,105.6L319.9,145.5L325.8,213.5L331.6,206.4L337.5,197.6L343.4,201.2L349.2,215.9L355.1,215.7L361.0,209.6L366.8,174.8L372.7,143.2L378.6,148.2L384.5,104.3L390.3,40.7L396.2,79.2L402.1,123.0L407.9,147.1L413.8,138.5L419.7,104.6L425.5,92.6L431.4,156.2L437.3,157.7L443.2,133.7L449.0,117.4L454.9,135.7L460.8,150.1L466.6,156.5L472.5,188.7L478.4,195.7L484.2,179.5L490.1,157.8L496.0,137.6L501.9,151.7L507.7,159.3L513.6,123.7L519.5,186.2L525.3,213.9L531.2,173.6L537.1,132.1L542.9,172.6L548.8,168.4L554.7,196.2L560.6,180.6L566.4,199.8L572.3,201.6L578.2,235.5L584.0,239.2L589.9,237.0L595.8,239.1L601.6,233.9L607.5,229.6L613.4,187.0L619.3,216.0L625.1,234.4L631.0,240.6L636.9,238.1L642.7,235.9L648.6,233.5L654.5,228.5L660.3,228.9M683.8,234.3L689.7,232.0L695.6,234.9L701.4,240.9L707.3,241.4L713.2,238.3L719.0,237.0L724.9,239.8L730.8,234.5L736.7,238.3L742.5,242.4L748.4,238.7L754.3,236.3L760.1,235.9" fill="none" class="svg-per24-line"/>
+<circle cx="114.4" cy="236.9" r="2.3" class="svg-per24-dot"/>
+</g>
+<g id="traj-per00" style="display:none">
+<path d="M44.0,240.4L49.9,231.3L55.7,230.9L61.6,220.2L67.5,236.3L73.3,234.5M114.4,239.7M214.2,178.9L220.1,182.3L226.0,214.0L231.8,178.2L237.7,210.3L243.6,220.7L249.4,186.2L255.3,199.8L261.2,181.1L267.1,184.2L272.9,194.3L278.8,221.0L284.7,208.3L290.5,212.2L296.4,195.6L302.3,124.9L308.1,99.7L314.0,121.5L319.9,218.1L325.8,201.5L331.6,205.1L337.5,136.7L343.4,221.5L349.2,207.8L355.1,205.6L361.0,166.3L366.8,174.1L372.7,132.1L378.6,153.3L384.5,96.8L390.3,20.0L396.2,89.0L402.1,153.2L407.9,151.9L413.8,138.0L419.7,89.2L425.5,131.3L431.4,163.9L437.3,157.1L443.2,119.4L449.0,132.7L454.9,157.1L460.8,145.5L466.6,162.4L472.5,196.9L478.4,158.6L484.2,138.0L490.1,168.5L496.0,170.4L501.9,152.7L507.7,154.7L513.6,179.1L519.5,222.9L525.3,205.3L531.2,175.9L537.1,189.2L542.9,128.3L548.8,208.2L554.7,198.5L560.6,201.9L566.4,195.2L572.3,214.9L578.2,238.0L584.0,233.4L589.9,239.2L595.8,237.5L601.6,235.0L607.5,231.0L613.4,198.4L619.3,228.9L625.1,242.4L631.0,237.5L636.9,240.9L642.7,221.7L648.6,232.0L654.5,214.1L660.3,201.8M683.8,234.6L689.7,232.7L695.6,241.2L701.4,241.2L707.3,238.6L713.2,237.7L719.0,240.7L724.9,237.1L730.8,243.1L736.7,237.4L742.5,239.6L748.4,235.1L754.3,237.5L760.1,233.7" fill="none" clip-path="url(#traj-clip)" class="svg-per00-line"/>
+<circle cx="114.4" cy="239.7" r="2.3" class="svg-per00-dot"/>
+<text x="396.3" y="31" class="svg-cap-note" data-i18n="t147">↑ a persistência 0h chega a 394 µg/m³ em 29/08 (eixo cortado em 340)</text>
+</g>
+<g id="traj-obs">
+<path d="M44.0,236.5L49.9,236.4L55.7,235.3L61.6,230.8L67.5,237.5L73.3,240.0M114.4,240.6M214.2,205.3L220.1,219.1L226.0,192.7L231.8,195.8L237.7,215.1L243.6,206.6L249.4,199.7L255.3,191.3L261.2,191.5L267.1,190.3L272.9,188.4L278.8,229.8L284.7,209.4L290.5,188.0L296.4,199.2L302.3,155.5L308.1,105.6L314.0,145.5L319.9,213.5L325.8,206.4L331.6,197.6L337.5,201.2L343.4,215.9L349.2,215.2L355.1,209.6L361.0,174.8L366.8,143.2L372.7,148.2L378.6,104.3L384.5,40.7L390.3,79.2L396.2,123.0L402.1,147.1L407.9,138.5L413.8,104.6L419.7,92.6L425.5,156.2L431.4,157.7L437.3,133.7L443.2,117.4L449.0,135.7L454.9,150.1L460.8,156.5L466.6,188.7L472.5,195.7L478.4,179.5L484.2,157.8L490.1,137.6L496.0,151.7L501.9,159.3L507.7,123.7L513.6,186.2L519.5,213.9L525.3,173.6L531.2,132.1L537.1,172.6L542.9,168.4L548.8,196.2L554.7,180.6L560.6,199.8L566.4,201.6L572.3,236.5L578.2,239.2L584.0,237.0L589.9,239.1L595.8,233.9L601.6,229.6L607.5,187.0L613.4,216.0L619.3,234.4L625.1,240.6L631.0,238.1L636.9,235.9L642.7,233.5L648.6,228.5L654.5,231.6L660.3,217.0M683.8,232.0L689.7,234.9L695.6,240.9L701.4,241.4L707.3,238.3L713.2,237.0L719.0,239.8L724.9,234.5L730.8,238.3L736.7,242.4L742.5,238.7L748.4,236.3L754.3,235.9L760.1,234.8" fill="none" class="svg-obs-line"/>
+<circle cx="114.4" cy="240.6" r="2.5" class="svg-obs-dot"/>
+</g>
+<g id="traj-m1">
+<path d="M44.0,239.3L49.9,235.2L55.7,235.9L61.6,235.1L67.5,237.5L73.3,237.6M114.4,238.7M214.2,198.6L220.1,208.6L226.0,220.6L231.8,194.2L237.7,207.2L243.6,220.5L249.4,198.6L255.3,200.4L261.2,190.1L267.1,191.9L272.9,198.1L278.8,201.7L284.7,223.6L290.5,216.5L296.4,200.9L302.3,184.1L308.1,170.8L314.0,161.3L319.9,198.2L325.8,212.5L331.6,209.6L337.5,197.7L343.4,215.6L349.2,211.0L355.1,210.4L361.0,199.1L366.8,184.3L372.7,165.3L378.6,174.8L384.5,158.1L390.3,144.8L396.2,149.3L402.1,168.4L407.9,173.0L413.8,168.4L419.7,152.6L425.5,161.4L431.4,184.5L437.3,174.8L443.2,161.0L449.0,164.8L454.9,172.8L460.8,171.7L466.6,179.5L472.5,201.7L478.4,191.7L484.2,186.4L490.1,186.0L496.0,177.1L501.9,176.3L507.7,181.7L513.6,178.6L519.5,218.9L525.3,217.2L531.2,193.7L537.1,192.2L542.9,190.3L548.8,201.5L554.7,205.9L560.6,207.4L566.4,204.3L572.3,217.3L578.2,238.8L584.0,239.6L589.9,237.6L595.8,237.0L601.6,234.6L607.5,228.7L613.4,211.5L619.3,227.7L625.1,240.5L631.0,239.6L636.9,239.3L642.7,232.3L648.6,234.3L654.5,226.7L660.3,224.1M683.8,234.8L689.7,235.3L695.6,240.6L701.4,241.1L707.3,240.6L713.2,239.6L719.0,239.2L724.9,238.9L730.8,241.0L736.7,239.8L742.5,240.9L748.4,239.1L754.3,238.5L760.1,236.7" fill="none" class="svg-m1-line"/>
+<circle cx="114.4" cy="238.7" r="2.5" class="svg-m1-dot"/>
+</g>
+<line x1="44" x2="766" y1="248" y2="248" class="svg-axis"/>
+<line x1="44.0" x2="44.0" y1="248" y2="252" class="svg-axis"/>
+<text x="48.0" y="264" class="svg-tick" data-i18n="t31">jul 2024</text>
+<line x1="226.0" x2="226.0" y1="248" y2="252" class="svg-axis"/>
+<text x="230.0" y="264" class="svg-tick" data-i18n="t32">ago</text>
+<line x1="407.9" x2="407.9" y1="248" y2="252" class="svg-axis"/>
+<text x="411.9" y="264" class="svg-tick" data-i18n="t33">set</text>
+<line x1="584.0" x2="584.0" y1="248" y2="252" class="svg-axis"/>
+<text x="588.0" y="264" class="svg-tick" data-i18n="t34">out</text>
+<line x1="766.0" x2="766.0" y1="248" y2="252" class="svg-axis"/>
+</svg></div>
+    <div class="pa-attrib"><span data-i18n="t149">Data from PurpleAir (<a href="https://www.purpleair.com" target="_blank" rel="noopener">purpleair.com</a>) · Powered by PurpleAir.</span></div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="t148"><strong>Como ler:</strong> a linha é a média das medianas horárias, que tende a ficar abaixo da média diária prevista quando o PM2.5 é assimétrico à direita. A faixa é a média dos quantis horários de 10% e 90%: só ilustra a dispersão e é mais larga que um intervalo de 80% da média diária. A cobertura (à direita) foi medida hora a hora, em 9.351 horas. A persistência 0h repete o único valor da meia-noite no dia inteiro e pode passar da média do dia (394 µg/m³ em 29/08).</p></div>
+  </figure>
+  <figure class="fig fig-estreita">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 9</span><span class="fig-t" data-i18n="t150">Com que frequência a faixa de 10% a 90% conteve a hora medida</span><span class="fig-s" data-i18n="t151">Meta: 80% · regime pela média das 24 h anteriores</span></figcaption>
+    <div class="calib-meter" aria-label="Cobertura horária da faixa de 10 a 90 por cento contra a meta de 80 por cento">
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t152">Rede principal · 2024 inteiro</span><span>81.1%</span></div>
+            <div class="calib-track"><div class="calib-fill" style="inline-size:81.1%"></div><span class="calib-target" title="Meta de 80%"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t153">Rede principal · seca, 24 h anteriores ≤ 50</span><span>81.7%</span></div>
+            <div class="calib-track"><div class="calib-fill" style="inline-size:81.7%"></div><span class="calib-target"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t154">Rede principal · seca, 24 h anteriores &gt; 50</span><span class="c-warn">70.6%</span></div>
+            <div class="calib-track"><div class="calib-fill warn" style="inline-size:70.6%"></div><span class="calib-target"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t155">Rede principal · seca</span><span>75.0%</span></div>
+            <div class="calib-track"><div class="calib-fill" style="inline-size:75.0%"></div><span class="calib-target"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t156">M2 + ERA5 · seca</span><span class="c-warn">63.9%</span></div>
+            <div class="calib-track"><div class="calib-fill warn" style="inline-size:63.9%"></div><span class="calib-target"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t157">M2 + ERA5 · seca, 24 h anteriores &gt; 50</span><span class="c-warn">56.7%</span></div>
+            <div class="calib-track"><div class="calib-fill warn" style="inline-size:56.7%"></div><span class="calib-target"></span></div>
+          </div>
+          <div class="calib-row">
+            <div class="calib-head"><span data-i18n="t158">XGBoost M2 + ERA5 · seca</span><span class="c-warn">48.8%</span></div>
+            <div class="calib-track"><div class="calib-fill warn" style="inline-size:48.8%"></div><span class="calib-target"></span></div>
+          </div>
+        </div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><div data-i18n="t159"><strong>Medido:</strong> a faixa da rede principal conteve <strong>81,7%</strong> das horas quando as 24 h anteriores tiveram média de até 50 µg/m³, perto da meta de 80%, e <strong>70,6%</strong> quando a média passou de 50. Nos dias poluídos, a faixa ficou estreita demais.</div></div>
+  </figure>
+</section>
+
+<!-- 08 · SENSORES FORA DO TREINO -->
+<section class="stage sec" id="s8" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">08</span><p class="kicker" data-i18n="n_k8">Sensores fora do treino</p><h2 data-i18n="n_h8">Nos sensores que não entraram no treino, a rede não superou a persistência</h2></div>
+  <div class="chips"><span class="meta-pill" data-i18n="t162">4 sensores novos em 3 locais: 2 urbanos + 1 rural (~88 km)</span></div>
+  <figure class="fig fig-estreita">
+    <figcaption class="fig-head"><span class="fig-n">Fig. 10</span><span class="fig-t" data-i18n="t164">Sensores que nunca entraram no treino, 2024 (MAE, µg/m³)</span><span class="fig-s" data-i18n="t165">Mesmos modelos, sem novo treino</span></figcaption>
+    <div class="tw"><table class="bench-table">
+          <thead>
+            <tr><th data-i18n="t166">Locais (pares)</th><th class="num">Bi-LSTM M1</th><th class="num" data-i18n="t167">Persist. 0h</th><th class="num">Persist. 24h</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row" data-i18n="t168">Sensores do treino (197)</th><td class="num c-m1">35.9</td><td class="num">37.1</td><td class="num">41.5</td></tr>
+            <tr><th scope="row" data-i18n="t169">Urbanos novos, 3 sensores (217)</th><td class="num">47.5</td><td class="num c-pers">44.3</td><td class="num">55.3</td></tr>
+            <tr><th scope="row" data-i18n="t170">Cuniã, rural, ~88 km (64)</th><td class="num c-m1">37.0</td><td class="num">37.3</td><td class="num">46.9</td></tr>
+          </tbody>
+        </table></div>
+    <div class="leitura"><span class="leitura-k" data-i18n="n_leitura">Leitura</span><p data-i18n="t171">No conjunto dos três sensores urbanos novos, a persistência teve erro menor que o da rede; na Cuniã, os dois ficaram próximos. Nenhuma dessas diferenças foi significativa no teste de Diebold–Mariano com correção de Holm (rede principal contra a persistência: p_Holm = 0,27 nos urbanos e 0,88 na Cuniã). Para comparar: dois sensores urbanos novos no mesmo local (219981 e 225327, 43 pares) diferiram entre si em <strong>30,9 µg/m³</strong> (MAE).</p></div>
+  </figure>
+</section>
+
+<!-- 09 · LIMITES E TRABALHOS FUTUROS -->
+<section class="stage sec" id="s9" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">09</span><p class="kicker" data-i18n="n_k9">Limites e trabalhos futuros</p><h2 data-i18n="t179">Limites, agrupados por nível de evidência</h2></div>
+  <div class="chips"><span class="meta-pill" data-i18n="t180">Medido · do desenho · não testado</span></div>
+  <div class="evidence-grid">
+          <div class="ev-card">
+            <span class="ev-badge ev-m" data-i18n="t139">Medido</span>
+            <ul>
+              <li data-i18n="t181"><strong>O alvo é um sensor de baixo custo corrigido:</strong> não foi encontrada colocalização publicada de PurpleAir com monitor de referência na Amazônia brasileira. Com fumaça, nos EUA, a correção teve RMSE normalizado de até 40% nas médias diárias e 55% nas horárias; só 5 de 15 locais atingiram as metas horárias da EPA (Barkjohn et al., 2022).</li>
+              <li data-i18n="t182"><strong>Pouco dado:</strong> 2 sensores de treino, com cobertura parcial em alguns anos; os sensores urbanos ficam a até ~5 km uns dos outros.</li>
+              <li data-i18n="t183"><strong>Faixa estreita demais nos dias poluídos:</strong> cobertura horária de 70,6% (rede principal) e 56,7% (M2 + ERA5) quando as 24 h anteriores tiveram média acima de 50 µg/m³.</li>
+              <li data-i18n="t184"><strong>Entradas de fogo:</strong> acrescentar 60 entradas do FIRMS (M3) aumentou o erro na validação cruzada em todas as famílias de modelo.</li>
+            </ul>
+          </div>
+
+          <div class="ev-card">
+            <span class="ev-badge ev-d" data-i18n="t185">Do desenho</span>
+            <ul>
+              <li data-i18n="t186"><strong>Fora da amostra, mas não cego:</strong> as médias diárias de 2024 tinham sido vistas numa conferência preliminar, por isso o teste de 2024 é exploratório (Mertens &amp; Krypotos, 2019). O teste confirmatório usa os dados selados de 2026.</li>
+              <li data-i18n="t187"><strong>O ERA5 é um limite superior:</strong> usa o tempo que de fato aconteceu, não uma previsão.</li>
+              <li data-i18n="t188"><strong>Uma só correção:</strong> esta entrega usa apenas Barkjohn et al. (2022); a sensibilidade a outras correções (Barkjohn 2021, AirNow) não foi avaliada aqui.</li>
+            </ul>
+          </div>
+
+          <div class="ev-card">
+            <span class="ev-badge ev-h" data-i18n="t189">Hipótese · não testada</span>
+            <ul>
+              <li data-i18n="t190"><strong>Por que as entradas de fogo não ajudaram:</strong> o histórico de PM2.5 pode já carregar o efeito do fogo próximo; o satélite vê cada foco só duas vezes por dia; os anéis de distância não dizem quando a fumaça chega; os hiperparâmetros fixos podem ser fracos para 83 entradas.</li>
+              <li data-i18n="t191"><strong>A correção pode errar mais aqui:</strong> a fumaça amazônica (higroscopicidade κ ≈ 0,10–0,17) e a umidade de 95–100% perto do amanhecer diferem dos locais dos EUA. Só uma colocalização, como com a estação FioAres, pode medir isso.</li>
+              <li data-i18n="t192"><strong>Quanto do viés de −28 µg/m³ vem de prever a mediana</strong> de um PM2.5 assimétrico à direita não foi medido.</li>
+            </ul>
+          </div>
+        </div>
+  <p class="fig-note prose" data-i18n="t193"><strong>Trabalhos anteriores:</strong> Jang &amp; Jung (2023) caracterizaram o PM2.5 de Porto Velho com PurpleAir (2020–2022); Nassarden et al. (2025) viram o CAMS superestimar o PM2.5 medido em Humaitá (AM), a cerca de 200 km.</p>
+  <h3 class="sub" data-i18n="n_tf_t">Trabalhos futuros</h3>
+  <div class="prose"><p data-i18n="n_tf_p">As limitações medidas e de desenho acima orientam frentes em aberto para continuidade da pesquisa — incluindo validação local com estação de referência, previsão meteorológica operacional, calibração da incerteza em regimes extremos e integração de novas fontes de observação.</p></div>
+</section>
+
+<!-- 10 · REFERÊNCIAS -->
+<section class="stage sec" id="s10" tabindex="-1">
+  <div class="sec-head"><span class="sec-idx">10</span><p class="kicker" data-i18n="n_k10">Referências</p><h2 data-i18n="n_h10">Referências citadas nesta página</h2></div>
+  <ol class="refs">
+    <li>BAHDANAU, D.; CHO, K.; BENGIO, Y. Neural machine translation by jointly learning to align and translate. In: INTERNATIONAL CONFERENCE ON LEARNING REPRESENTATIONS, 3., 2015, San Diego. <em>Proceedings</em> [...]. 2015. Disponível em: <a href="https://arxiv.org/abs/1409.0473" target="_blank" rel="noopener">https://arxiv.org/abs/1409.0473</a>.</li>
+    <li>BARKJOHN, K. K. et al. Correction and accuracy of PurpleAir PM2.5 measurements for extreme wildfire smoke. <em>Sensors</em>, v. 22, n. 24, 9669, 2022. DOI: <a href="https://doi.org/10.3390/s22249669" target="_blank" rel="noopener">10.3390/s22249669</a>.</li>
+    <li>COKER, E. S. et al. Association between PM2.5 and respiratory hospitalization in Rio Branco, Brazil: demonstrating the potential of low-cost air quality sensor for epidemiologic research. <em>Environmental Research</em>, v. 214, 113738, 2022. DOI: <a href="https://doi.org/10.1016/j.envres.2022.113738" target="_blank" rel="noopener">10.1016/j.envres.2022.113738</a>.</li>
+    <li>DIEBOLD, F. X.; MARIANO, R. S. Comparing predictive accuracy. <em>Journal of Business &amp; Economic Statistics</em>, v. 13, n. 3, p. 253-263, 1995.</li>
+    <li>HARVEY, D.; LEYBOURNE, S.; NEWBOLD, P. Testing the equality of prediction mean squared errors. <em>International Journal of Forecasting</em>, v. 13, n. 2, p. 281-291, 1997.</li>
+    <li>JANG, Y.-W.; JUNG, G.-W. Temporal characteristics and sources of PM2.5 in Porto Velho of Amazon region in Brazil from 2020 to 2022. <em>Sustainability</em>, v. 15, n. 18, 14012, 2023. DOI: <a href="https://doi.org/10.3390/su151814012" target="_blank" rel="noopener">10.3390/su151814012</a>.</li>
+    <li>MERTENS, G.; KRYPOTOS, A.-M. Preregistration of analyses of preexisting data. <em>Psychologica Belgica</em>, v. 59, n. 1, p. 338-352, 2019. DOI: <a href="https://doi.org/10.5334/pb.493" target="_blank" rel="noopener">10.5334/pb.493</a>.</li>
+    <li>NASSARDEN, D. et al. Evaluation and calibration of MERRA-2 and CAMS reanalysis for PM2.5 in a semi-urbanized area in the south of the Amazon. <em>Air Quality, Atmosphere &amp; Health</em>, v. 18, n. 7, p. 1957-1972, 2025. DOI: <a href="https://doi.org/10.1007/s11869-025-01745-0" target="_blank" rel="noopener">10.1007/s11869-025-01745-0</a>.</li>
+    <li>TAGGART, R. Evaluation of point forecasts for extreme events using consistent scoring functions. <em>Quarterly Journal of the Royal Meteorological Society</em>, v. 148, n. 742, p. 306-320, 2022. DOI: <a href="https://doi.org/10.1002/qj.4206" target="_blank" rel="noopener">10.1002/qj.4206</a>.</li>
+  </ol>
+</section>
+
+<footer class="site-footer">
+  <div class="disclaimer-box">
+    <strong data-i18n="t194">Atribuição dos dados e aviso obrigatório de saúde e emergência (termos da PurpleAir, §4.8 e §7.3):</strong>
+    <span data-i18n="t195">Data from PurpleAir (<a href="https://www.purpleair.com" target="_blank" rel="noopener">purpleair.com</a>). As previsões deste projeto são <strong>Powered by PurpleAir</strong>.</span>
+    <em>“Underlying air quality data utilized by pm25-forecast-pvh is sourced from PurpleAir, a network of consumer sensors. Sensors are owned and managed by consumers, therefore PurpleAir does not guarantee data accuracy. All insights and claims are solely made by pm25-forecast-pvh.”</em>
+    <span data-i18n="t196">Este repositório e esta página apresentam uma pesquisa acadêmica: as previsões e as avaliações de limiares não garantem exatidão nem disponibilidade em nenhum contexto de saúde ou emergência e não devem ser usadas em decisões médicas, de saúde pública ou de resposta a queimadas.</span>
+  </div>
+  <p><span data-i18n="t198">Código: licença MIT ·</span> <a href="https://github.com/giujjia/pm25-forecast-pvh" target="_blank" rel="noopener">github.com/giujjia/pm25-forecast-pvh</a></p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* 0. Idioma: português por padrão; o inglês fica em I18N[chave][1] */
+  var I18N = {"n_byline":["Giullia de Souza Santos · Ciência da Computação, UNIR","Giullia de Souza Santos · Computer Science, UNIR"],"n_kicker":["Future Tech Leaders Brasil · Space Tech Bootcamp 2026 · Projeto final","Future Tech Leaders Brasil · Space Tech Bootcamp 2026 · Final project"],"n_lede":["Uma rede neural Bi-LSTM prevê a curva hora a hora do PM2.5 nas 48 horas seguintes a partir de sensores PurpleAir corrigidos. Com as comparações fixadas antes do teste, ela errou menos que a persistência e a climatologia nos anos típicos; na seca extrema de 2024, superou a previsão bruta do CAMS, mas não a persistência nem o CAMS com correção de viés.","A Bi-LSTM neural network forecasts the hourly PM2.5 curve for the next 48 hours from corrected PurpleAir sensors. With comparisons fixed before the test, it had lower error than persistence and climatology in typical years; in the extreme 2024 dry season it beat the raw CAMS forecast, but not persistence nor CAMS with bias correction."],"n_leitura":["Leitura","Reading"],"n_ods_t":["Relação com os Objetivos de Desenvolvimento Sustentável","Link to the Sustainable Development Goals"],"n_q_t":["As duas perguntas","The two questions"],"n_s0":["Capa","Cover"],"n_skip":["Pular para o conteúdo","Skip to content"],"n_spark":["PM2.5 diário medido no sensor 39077, de julho a outubro de 2024 (Fig. 1)","Daily PM2.5 measured at sensor 39077, July to October 2024 (Fig. 1)"],"n_tf_p":["As limitações medidas e de desenho acima orientam frentes em aberto para continuidade da pesquisa — incluindo validação local com estação de referência, previsão meteorológica operacional, calibração da incerteza em regimes extremos e integração de novas fontes de observação.","The measured and design limitations above point to open directions for continuing this research — including local validation against a reference monitor, operational weather forecasts, uncertainty calibration under extreme regimes, and integrating additional observation sources."],"n_tf_t":["Trabalhos futuros","Future work"],"n_h1":["Na seca de 2024, o sensor 39077 registrou PM2.5 acima de 50 µg/m³ em 59 de 111 dias","In the 2024 dry season, sensor 39077 recorded PM2.5 above 50 µg/m³ on 59 of 111 days"],"n_k1":["Contexto e perguntas","Context and questions"],"n_l1":["No dia de pico, 28/08, a média diária chegou a 309,2 µg/m³. Os valores são do PurpleAir corrigido, e não de um monitor de referência; os limiares aparecem só como referência de pesquisa.","On the peak day, 28 Aug, the daily mean reached 309.2 µg/m³. Values come from corrected PurpleAir sensors, not from a reference monitor; thresholds are shown for research reference only."],"n_r1d":["PM2.5 horário, com conferência dos canais A e B e correção de Barkjohn et al. (2022); 6 sensores em 5 locais","Hourly PM2.5, with A and B channel checks and the Barkjohn et al. (2022) correction; 6 sensors at 5 sites"],"n_r1f":["PurpleAir · sensores de baixo custo","PurpleAir · low-cost sensors"],"n_r1p":["Alvo e entrada (histórico de 72 h). Treino: 39077 e 56831. Avaliação fora do treino: 3 sensores urbanos em 2 locais e 1 rural (Cuniã).","Target and input (72 h history). Training: 39077 and 56831. Out-of-training evaluation: 3 urban sensors at 2 sites and 1 rural (Cuniã)."],"n_s1":["Contexto","Context"],"n_th1":["Fonte","Source"],"n_h2":["Quatro fontes de dados, cada uma com um papel","Four data sources, each with one role"],"n_k2":["Dados","Data"],"n_m2":["Três versões: M1 (72 h de PM2.5 e calendário), M2 (M1 + tempo do ERA5) e M3 (M2 + fogo do FIRMS). As entradas candidatas entram por uma regra fixada antes de olhar a relação delas com o PM2.5, refeita só com os anos de treino de cada dobra.","Three versions: M1 (72 h of PM2.5 and calendar), M2 (M1 + ERA5 weather) and M3 (M2 + FIRMS fire). Candidate inputs enter by a rule fixed before looking at their relation with PM2.5, rerun only on the training years of each fold."],"n_m2k":["Entradas","Inputs"],"n_p2":["Só entra numa previsão o que já estaria disponível no momento em que ela é emitida, à meia-noite local (04 UTC). O alvo é sempre o PM2.5 medido pelos sensores PurpleAir corrigidos.","A forecast only uses what would already be available when it is issued, at local midnight (04 UTC). The target is always the PM2.5 measured by the corrected PurpleAir sensors."],"n_r2d":["Tempo horário na célula do sensor e na média da região","Hourly weather at the sensor's grid cell and as a regional mean"],"n_r2f":["ERA5 · reanálise (Copernicus)","ERA5 · reanalysis (Copernicus)"],"n_r2p":["Entrada da M2. Na variante “tempo perfeito”, também as horas futuras observadas: um limite superior, e não uma previsão.","Input of M2. In the “perfect weather” variant, also the observed future hours: an upper bound, not a forecast."],"n_s2":["Dados","Data"],"n_th2":["O que traz","What it provides"],"n_h3":["Anos separados, regras fixadas antes e um teste aberto uma única vez","Separate years, rules fixed in advance and a test opened only once"],"n_k3":["Método","Method"],"n_ods3":["<strong>ODS 3 · Saúde (meta 3.9)<\/strong>Em Rio Branco, o PM2.5 medido com PurpleAir corrigido esteve associado a +5,4% nas internações respiratórias a cada 10 µg/m³ (Coker et al., 2022). Prever os dias críticos permite alertas antecipados.","<strong>SDG 3 · Health (target 3.9)<\/strong>In Rio Branco, PM2.5 measured with corrected PurpleAir sensors was associated with +5.4% respiratory hospitalizations per 10 µg/m³ (Coker et al., 2022). Forecasting critical days enables early warnings."],"n_r3d":["Focos de fogo e potência radiativa do fogo (FRP), em anéis de até 1000 km","Fire detections and fire radiative power (FRP), in rings up to 1000 km"],"n_r3f":["NASA FIRMS · VIIRS, NOAA-20","NASA FIRMS · VIIRS, NOAA-20"],"n_r3p":["Entrada da M3","Input of M3"],"n_s3":["Método","Method"],"n_th3":["Papel","Role"],"n_f4":["MAE por ano avaliado e na média (µg/m³)","MAE by evaluated year and overall (µg/m³)"],"n_h4":["Em anos típicos, a rede errou menos que a persistência e a climatologia","In typical years, the network had lower error than persistence and climatology"],"n_k4":["Resultados · anos típicos","Results · typical years"],"n_m4":["Persistência (o valor da 0h repetido), persistência das últimas 24 h, climatologia (mês × hora), Ridge e XGBoost com as mesmas entradas e, no teste de 2024, a previsão global do CAMS, bruta e com viés móvel de 7 dias.","Persistence (the 00h value repeated), persistence of the last 24 h, climatology (month × hour), Ridge and XGBoost with the same inputs and, in the 2024 test, the CAMS global forecast, raw and with a 7-day moving bias correction."],"n_m4k":["Referências","Baselines"],"n_p4":["Na validação cruzada de 2021 a 2023, a rede principal, sem tempo futuro, teve erro médio de 12,0 µg/m³, contra 15,7 da persistência e 20,9 da climatologia, com diferença significativa após Holm. Contra o Ridge e o XGBoost, a diferença foi pequena e não significativa.","In the 2021–2023 cross-validation, the main network, without future weather, had a mean error of 12.0 µg/m³, against 15.7 for persistence and 20.9 for climatology, a significant difference after Holm. Against Ridge and XGBoost, the difference was small and not significant."],"n_r4d":["PM2.5 previsto pela rodada das 12 UTC do dia anterior","PM2.5 forecast by the 12 UTC run of the previous day"],"n_r4f":["CAMS · previsão global (Copernicus)","CAMS · global forecast (Copernicus)"],"n_r4p":["Adversário no teste de 2024: bruto e com viés móvel de 7 dias","Baseline in the 2024 test: raw and with a 7-day moving bias correction"],"n_s4":["Anos típicos","Typical years"],"n_k5":["Resultados · teste de 2024","Results · 2024 test"],"n_l5":["A rede principal teve o menor MAE da tabela, mas a diferença para o CAMS com viés móvel e para a persistência não foi significativa (Fig. 6). Todos os modelos erraram bem mais que nos anos típicos (seção 07).","The main network had the lowest MAE in the table, but its difference from CAMS with moving bias and from persistence was not significant (Fig. 6). Every model erred much more than in typical years (section 07)."],"n_m5":["Validação cruzada temporal com três dobras (anos avaliados 2021, 2022 e 2023) e embargo de 48 h. A versão é escolhida até 2% do melhor MAE pelo menor escore de Brier para “dia acima de 50 µg/m³”.","Temporal cross-validation with three folds (evaluated years 2021, 2022 and 2023) and a 48 h embargo. The version is chosen within 2% of the best MAE by the lowest Brier score for “day above 50 µg/m³”."],"n_m5k":["Validação","Validation"],"n_p5":["O ano de 2024 foi aberto uma única vez, depois do pré-registro, com os modelos da dobra 3. As comparações usam os 197 pares emissão–sensor comuns a todos os modelos (99 emissões).","The year 2024 was opened only once, after pre-registration, with the fold-3 models. Comparisons use the 197 issuance–sensor pairs common to all models (99 issuances)."],"n_s5":["Teste de 2024","2024 test"],"n_k6":["Erro hora a hora","Error hour by hour"],"n_s6":["Hora a hora","Hour by hour"],"n_k7":["Por que 2024 foi mais difícil","Why 2024 was harder"],"n_m7":["Métrica principal: erro absoluto médio (MAE) da mediana prevista de +1 a +48 h, nas previsões emitidas à 0h local na seca (jul–out), nos dois sensores do treino. As diferenças são testadas com Diebold–Mariano (correção de Harvey, Leybourne e Newbold) e ajuste de Holm.","Main metric: mean absolute error (MAE) of the forecast median from +1 to +48 h, for forecasts issued at 00h local in the dry season (Jul–Oct), at the two training sensors. Differences are tested with Diebold–Mariano (Harvey, Leybourne and Newbold correction) and Holm adjustment."],"n_m7k":["Métrica e testes","Metric and tests"],"n_s7":["Por que 2024","Why 2024"],"n_h8":["Nos sensores que não entraram no treino, a rede não superou a persistência","At sensors never used in training, the network did not beat persistence"],"n_k8":["Sensores fora do treino","Sensors outside training"],"n_s8":["Outros locais","Other sites"],"n_k9":["Limites e trabalhos futuros","Limits and future work"],"n_s9":["Limites","Limits"],"n_h10":["Referências citadas nesta página","References cited on this page"],"n_k10":["Referências","References"],"n_s10":["Referências","References"],"n_ods11":["<strong>ODS 11 · Cidades (meta 11.6)<\/strong>O indicador 11.6.2 é a média anual de PM2.5 nas cidades, a grandeza que o projeto mede com os sensores corrigidos.","<strong>SDG 11 · Cities (target 11.6)<\/strong>Indicator 11.6.2 is the annual mean PM2.5 in cities, the quantity this project measures with the corrected sensors."],"n_ods13":["<strong>ODS 13 · Clima (meta 13.1)<\/strong>Secas extremas, como a de 2024, intensificam as queimadas; alertas antecipados aumentam a capacidade de adaptação.","<strong>SDG 13 · Climate (target 13.1)<\/strong>Extreme droughts, such as that of 2024, intensify fires; early warnings increase adaptive capacity."],"t0":["PVH · 8,76°S 63,90°W","PVH · 8.76°S 63.90°W"],"theme":["Tema","Theme"],"t4":["Teste 2024","2024 test"],"t8":["Modo slides","Slide Snap"],"t10":["Previsão do PM2.5 nas próximas 48 horas sob a fumaça das queimadas em Porto Velho","48-Hour PM2.5 Forecasting Under Amazonian Wildfire Smoke in Porto Velho"],"t13":["Dias de 2024 acima de 50 (sensor 39077)","2024 days above 50 (sensor 39077)"],"t14":["dias válidos","valid days"],"t15":["Acima do limite diário PI-2 do CONAMA; 26 dias acima de 125 µg/m³ (nível de Atenção)","Above the CONAMA PI-2 daily limit; 26 days above 125 µg/m³ (Attention level)"],"t16":["Anos típicos · validação cruzada 2021–2023","Typical years · cross-validation 2021–2023"],"t17":["µg/m³ MAE","µg/m³ MAE"],"t18":["Rede principal: erro menor que o da persistência (15,7) e o da climatologia (20,9), p ≤ 0,0001 após Holm","Main network: lower error than persistence (15.7) and climatology (20.9), p ≤ 0.0001 after Holm"],"t19":["Teste de 2024 · rede principal","2024 test · main network"],"t20":["Erro menor que o do CAMS bruto (45,8), do Ridge (40,3) e do XGBoost (43,5), todos significativos após Holm","Lower error than raw CAMS (45.8), Ridge (40.3) and XGBoost (43.5), all significant after Holm"],"t21":["2024 · contra referências simples","2024 · against simple baselines"],"t22":["Não foi melhor<small>99 emissões<\/small>","Not better<small>99 issuances<\/small>"],"t23":["Sem diferença significativa para a persistência (37,1) nem para o CAMS com viés móvel de 7 dias (36,7). Isso não prova empate.","No significant difference from persistence (37.1) or CAMS with 7-day bias correction (36.7). This is not evidence of a tie."],"t24":["Média diária de PM2.5 no sensor 39077, seca de 2024 (dias com pelo menos 18 h de dados)","Daily mean PM2.5 at sensor 39077, dry season 2024 (days with at least 18 h of data)"],"t25":["Pico: 309,2 µg/m³ (28/08)","Peak: 309.2 µg/m³ (28 Aug)"],"t26":["lacuna de 15 a 26/07","15–26 Jul gap"],"t27":["(nenhum dia com ≥ 18 h)","(no day with ≥18 h)"],"t28":["50 µg/m³ · PI-2 do CONAMA (59/111 d)","50 µg/m³ · CONAMA PI-2 (59/111 d)"],"t29":["125 µg/m³ · Atenção (26/111 d)","125 µg/m³ · Attention (26/111 d)"],"t30":["309,2 µg/m³ (28/08)","309.2 µg/m³ (28 Aug)"],"t31":["jul 2024","Jul 2024"],"t32":["ago","Aug"],"t33":["set","Sep"],"t34":["out","Oct"],"t35":["Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>), com a correção de Barkjohn et al. (2022).","Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>), Barkjohn et al. (2022) correction."],"t36":["Limiares da CONAMA 506/2024 mostrados só como referência de pesquisa (ver aviso no rodapé).","CONAMA 506/2024 thresholds shown for research reference only (see footer disclaimer)."],"t40":["Julho a outubro concentram 92,9% dos focos de fogo num raio de 30 km da cidade (média de 2012 a 2022; Jang &amp; Jung, 2023). Plataformas públicas (VigiAR, AlertAr Saúde, CPTEC/INPE) divulgam previsões globais do CAMS que, até onde a busca alcançou, não tinham sido avaliadas contra medições em Porto Velho.","July to October concentrate 92.9% of the fire detections within 30 km of the city (2012–2022 mean; Jang &amp; Jung, 2023). Public platforms (VigiAR, AlertAr Saúde, CPTEC/INPE) publish global CAMS forecasts which, as far as our search reached, had not been evaluated against measurements in Porto Velho."],"t41":["Pergunta 1","Question 1"],"t42":["Quão exata é a previsão global bruta do CAMS contra as medições locais na estação da fumaça, e quanto uma correção simples de viés móvel de 7 dias recupera?","How accurate is the raw global CAMS forecast against local surface measurements during the smoke season, and how much does a simple 7-day moving bias correction recover?"],"t43":["Pergunta 2","Question 2"],"t44":["Uma Bi-LSTM codificador-decodificador, treinada com o histórico dos sensores locais e usável na prática, prevê as próximas 48 horas de PM2.5 (com os quantis de 10% a 90%) melhor que a persistência e o CAMS?","Can an operational encoder-decoder Bi-LSTM trained on local sensor history forecast the next 48 hourly PM2.5 values—plus 10–90% quantiles—more accurately than persistence and CAMS?"],"t45":["Ressalva sobre o alvo","Target caveat"],"t46":["Porto Velho não tinha estação permanente de referência de PM2.5 até 2025; a estação FioAres, da Fiocruz, opera desde julho de 2026 (equipamento e método ainda a confirmar). Todas as métricas usam o PM2.5 dos PurpleAir, com conferência dos canais A/B e a correção de Barkjohn et al. (2022), e não medições de referência.","Porto Velho had no permanent reference PM2.5 station until 2025; the Fiocruz FioAres station has operated since July 2026 (equipment and method still to be confirmed). All metrics use PurpleAir PM2.5 with A/B channel checks and the Barkjohn et al. (2022) correction, not reference-grade measurements."],"t49":["40 testes automáticos","40 automated tests"],"t50":["embargo de 48 h","48 h embargo"],"t51":["Previsão emitida à 0h local (04 UTC)","Forecast issued at 00:00 local (04 UTC)"],"t52":["Anos usados em treino, validação e teste","Years used for training, validation and test"],"t53":["Só dados disponíveis na hora da previsão","Only data available at forecast time"],"t54":["Dobra 1","CV Fold 1"],"t55":["Dobra 2","CV Fold 2"],"t56":["Dobra 3","CV Fold 3"],"t57":["2024 Teste","2024 Test"],"t58":["2026 Cego","2026 Blind"],"t59":["Os modelos de 2024 são os da dobra 3: treinados em 2020–2022, com a parada antecipada em 2023. Um embargo de 48 h separa o treino da avaliação. 2026 fica selado para um teste cego.","The 2024 models are the fold-3 models: trained on 2020–2022, with early stopping on 2023. A 48 h embargo separates training from evaluation. 2026 stays sealed for a blind test."],"t60":["Alvo","Target"],"t61":["A hora é descartada quando os canais A e B diferem em mais de 5 µg/m³ e 70%. Correção de Barkjohn et al. (2022), rótulo no fim da hora; o alvo nunca é interpolado.","An hour is dropped when channels A and B differ by more than 5 µg/m³ and 70%. Barkjohn et al. (2022) correction, end-of-hour labels; the target is never interpolated."],"t62":["Modelo","Model"],"t63":["Bi-LSTM codificador-decodificador com atenção temporal (Bahdanau). Lê as últimas 72 h e prevê cada hora de +1 a +48 h com os quantis de 10%, 50% e 90%; perda pinball em log(1 + PM2.5); média de 3 sementes.","Encoder-decoder Bi-LSTM with temporal attention (Bahdanau). It reads the last 72 h and forecasts each hour from +1 to +48 h with the 10%, 50% and 90% quantiles; pinball loss on log(1 + PM2.5); mean of 3 seeds."],"t64":["Trava de 2024","2024 lock"],"t65":["Todo script que toca em 2024 se recusa a rodar sem <code>--abrir<\/code>. O teste inteiro rodou antes em 2023 (<code>--ensaio<\/code>); depois, 2024 foi aberto uma única vez.","Every script that touches 2024 refuses to run without <code>--abrir<\/code>. The whole test pipeline first ran on 2023 (<code>--ensaio<\/code>); then 2024 was opened once."],"t66":["MAE na validação cruzada (µg/m³), 2021–2023, 651 pares","Cross-validation MAE (µg/m³), 2021–2023, 651 pairs"],"t67":["Escolha: até 2% do melhor MAE, menor escore de Brier","Choice: within 2% of the best MAE, lowest Brier score"],"t70":["M1 · 5 entradas/h","M1 · 5 inputs/h"],"t71":["M2 · 23 entradas/h","M2 · 23 inputs/h"],"t72":["M3 + fogo · 83 entradas/h","M3 + fire · 83 inputs/h"],"t73":["M2 + ERA5 (limite superior)","M2 + ERA5 (upper bound)"],"t74":["Persistência (0h)","Persistence (00h)"],"t75":["<strong>Medido:<\/strong> com mais entradas por hora, de 5 (M1) para 23 (M2, tempo do ERA5) e 83 (M3, potência do fogo do NASA FIRMS), a melhor época da parada antecipada veio mais cedo (6–18 na M1, 2–7 na M2, 1–5 na M3). Da M2 para a M3, o erro subiu nas três famílias de modelo: Bi-LSTM (12,5 → 14,6), Ridge (12,6 → 13,6) e XGBoost (12,5 → 12,8). Da M1 para a M2, só o XGBoost melhorou (13,1 → 12,5). A M3 não foi ao teste de 2024. Por que as entradas de fogo não ajudaram é hipótese não testada (ver Limites).","<strong>Measured:<\/strong> with more inputs per hour, from 5 (M1) to 23 (M2, ERA5 weather) and 83 (M3, NASA FIRMS fire power), the best early-stopping epoch came earlier (6–18 in M1, 2–7 in M2, 1–5 in M3). From M2 to M3, the error grew in all three model families: Bi-LSTM (12.5 → 14.6), Ridge (12.6 → 13.6) and XGBoost (12.5 → 12.8). From M1 to M2, only XGBoost improved (13.1 → 12.5). M3 did not go to the 2024 test. Why fire inputs did not help is an untested hypothesis (see Limits)."],"t76":["Modelo","Model Variant"],"t77":["Média VC","CV Mean"],"t78":["Bi-LSTM M1 (principal)","Bi-LSTM M1 (main)"],"t79":["Bi-LSTM M2 + ERA5 (limite superior)","Bi-LSTM M2 + ERA5 (upper bound)"],"t80":["Bi-LSTM M3 (+ fogo)","Bi-LSTM M3 (+ fire)"],"t81":["Climatologia","Climatology"],"t82":["Teste de Diebold–Mariano em 362 emissões: a rede principal teve erro menor que o da persistência (−3,79 µg/m³, p_Holm = 2,1×10⁻⁹) e o da persistência de 24 h (−3,01 µg/m³, p_Holm = 1,4×10⁻¹²).","Diebold–Mariano test over 362 issuances: the main network had a lower error than persistence (−3.79 µg/m³, p_Holm = 2.1×10⁻⁹) and 24 h persistence (−3.01 µg/m³, p_Holm = 1.4×10⁻¹²)."],"t84":["Em 2024, a rede superou o CAMS bruto, mas não a persistência nem o CAMS com viés móvel","In 2024 the network beat raw CAMS, but not persistence or bias-corrected CAMS"],"t85":["Os 9 modelos","All 9 models"],"t86":["Ocultar o limite superior (ERA5)","Hide the ERA5 upper bound"],"t87":["Erro da mediana prevista de +1 a +48 h (MAE, µg/m³), sensores do treino 39077 e 56831","Error of the median forecast over +1 to +48 h (MAE, µg/m³), training sensors 39077 and 56831"],"t88":["Ordem pelo MAE de 2024 · 197 pares, 99 emissões","Sorted by 2024 MAE · 197 pairs, 99 issuances"],"t89":["Erro absoluto médio na validação cruzada (2021–2023) e no teste de 2024, nos 197 pares emissão–sensor comuns.","Mean absolute error across cross-validation (2021–2023) and the 2024 test on the 197 common issuance-sensor pairs."],"t90":["Tipo","Type"],"t91":["VC 21–23","CV 21–23"],"t92":["MAE teste 2024","Test 2024 MAE"],"t93":["Bi-LSTM M1 (sem tempo futuro)","Bi-LSTM M1 (no future weather)"],"t94":["Principal","Main"],"t95":["CAMS + viés móvel 7 d","CAMS + 7d moving bias"],"t96":["Referência","Baseline"],"t97":["Persistência (0h local)","Persistence (00h local)"],"t98":["Bi-LSTM M2 (+ tempo futuro do ERA5)","Bi-LSTM M2 (+ERA5 future weather)"],"t99":["Limite superior","Upper Bound"],"t100":["Persistência das últimas 24 h","Persistence of last 24 h"],"t101":["Previsão global bruta do CAMS","Raw CAMS global forecast"],"t102":["Publicada","Published"],"t103":["Climatologia (mês × hora, 2020–2022)","Climatology (2020–2022 month×hour)"],"t104":["Ridge e XGBoost: o primeiro valor é a versão comparada com a rede principal; o segundo, com o limite superior. O CAMS não entrou na validação cruzada. MAE &gt;50: erro na parte da curva acima de 50 µg/m³, a média de |max(previsto, 50) − max(medido, 50)| (Taggart, 2022). O tempo futuro observado (ERA5) não melhorou a rede de forma significativa em 2024: −2,28 µg/m³ contra a M2 sem tempo futuro, IC 95% de −5,8 a +1,3.","Ridge and XGBoost: first value is the version compared with the main network, second with the upper bound. CAMS was not part of cross-validation. MAE &gt;50: error on the part of the curve above 50 µg/m³, the mean of |max(forecast, 50) − max(measured, 50)| (Taggart, 2022). Observed future weather (ERA5) did not improve the network significantly in 2024: −2.28 µg/m³ against M2 without future weather, 95% CI −5.8 to +1.3."],"t105":["Rede principal menos cada referência, com IC 95%","Main network minus each baseline, with 95% CI"],"t106":["Teste de Diebold–Mariano, ajuste de Holm","Diebold–Mariano test, Holm-adjusted"],"t107":["Aponte para uma linha para ver a diferença exata, o intervalo e o p ajustado. Ponto cheio: significativo após Holm.","Point at a row to see the exact difference, its interval and the adjusted p-value. Filled dot: significant after Holm."],"t108":["<strong>Pouco poder:<\/strong> com 99 emissões, os intervalos contra a persistência e o CAMS com viés móvel têm cerca de ±5–6 µg/m³ (p_Holm = 1,0 nos dois). O teste não mostra que a rede é melhor que eles, e isso não mostra que os erros são iguais.","<strong>Little power:<\/strong> with 99 issuances, the intervals against persistence and bias-corrected CAMS are about ±5–6 µg/m³ wide (p_Holm = 1.0 for both). The network is not shown to be better than them; this does not show that the errors are equal."],"t110":["O erro sobe e desce com a hora do dia","The error rises and falls with the time of day"],"t111":["Previsão emitida à 0h local (UTC−4)","Forecast issued at 00:00 local (UTC−4)"],"t112":["Maior erro: 8h local (+8 h e +32 h)","Highest error: 08:00 local (+8 h and +32 h)"],"t113":["MAE em cada hora depois da previsão, 197 pares comuns a todos os modelos","MAE at each hour after the forecast, 197 pairs common to all models"],"t114":["Estimativas pontuais; nenhum teste por hora foi planejado","Point estimates; no per-hour test was planned"],"t115":["M1 (principal)","M1 (Main)"],"t116":["Persistência","Persistence"],"t117":["CAMS + viés 7 d","CAMS + 7d Bias"],"t118":["CAMS bruto","Raw CAMS"],"t119":["Passe o ponteiro sobre o gráfico para ler o erro de cada modelo em cada hora (hora local, UTC−4).","Move the pointer over the chart to read each model's error at each hour (local time, UTC−4)."],"t120":["<strong>O que as curvas mostram:<\/strong> todos os modelos têm os maiores erros por volta das 8h local (+8 h e +32 h). As redes e o CAMS bruto têm os menores erros por volta das 18h local do dia 1 (+18 h). A persistência tem o menor erro nas primeiras horas. São estimativas pontuais: nenhum teste por hora foi planejado, e por que o erro segue a hora do dia não foi testado.","<strong>What the curves show:<\/strong> every model has its largest errors around 08:00 local (+8 h and +32 h). The networks and raw CAMS have their smallest errors around 18:00 local on day 1 (+18 h). Persistence has the lowest error in the first hours. These are point estimates: no per-hour test was planned, and why the error follows the time of day was not tested."],"t121":["Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>) · Previsões: Powered by PurpleAir.","Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>) · Forecasts: Powered by PurpleAir."],"t123":["2024 foi muito mais poluído que os anos de treino","2024 was far more polluted than the training years"],"t124":["Interpretação apoiada nos dados abaixo, não uma causa testada.","Interpretation supported by the data below, not a tested cause."],"t125":["p99 de 2020–22: 116,1 µg/m³","2020–22 p99: 116.1 µg/m³"],"t126":["Média de 2024: 86,7 µg/m³ (máx. 731,3)","2024 Mean: 86.7 µg/m³ (Max 731.3)"],"t127":["Nível de 2024 × treino","2024 level vs. training"],"t128":["µg/m³ de média","µg/m³ mean"],"t129":["Seca de 2024, média nas 48 h depois de cada previsão (máximo de 731,3). 99% das horas de treino (2020–2022) ficaram abaixo de 116,1 (máximo de 551,0).","Dry season 2024, mean in the 48 h after each forecast (maximum 731.3). 99% of training hours (2020–2022) were below 116.1 (maximum 551.0)."],"t130":["Maior mediana prevista","Highest median forecast"],"t131":["Rede principal. M2 com ERA5: 176,7; XGBoost: 148,4. Máximo medido: 731,3.","Main network. M2 with ERA5: 176.7; XGBoost: 148.4. Measured maximum: 731.3."],"t132":["Viés médio horário, 2024","Mean hourly bias, 2024"],"t133":["µg/m³ (principal)","µg/m³ (main)"],"t134":["M2 com ERA5 −30,7; XGBoost −38,0; persistência +1,3; CAMS com viés móvel −2,5. As redes preveem a mediana, que fica abaixo da média quando o PM2.5 é assimétrico à direita; parte do viés delas é esperada, e quanto não foi medido.","M2 with ERA5 −30.7; XGBoost −38.0; persistence +1.3; CAMS + 7-day bias −2.5. The networks forecast a median, which sits below the mean when PM2.5 is right-skewed, so part of their bias is expected; how much was not measured."],"t135":["Alertas diários, dia D (habilidade de Brier)","Daily alerts, day D (Brier skill)"],"t136":["habilidade","skill"],"t137":["Rede principal contra a climatologia mensal: 0,72 para dias acima de 50 µg/m³ e 0,71 para dias acima de 125 µg/m³.","Main network against monthly climatology: 0.72 for days above 50 µg/m³ and 0.71 for days above 125 µg/m³."],"t138":["Sensor 39077: média diária medida × previsão para o próprio dia (jul–out 2024)","Sensor 39077: measured daily mean vs. forecast for the same day (Jul–Oct 2024)"],"t139":["Medido","Measured"],"t140":["Rede principal (média das medianas horárias)","Main network (mean of hourly medians)"],"t141":["Média dos quantis horários de 10% a 90%","Mean of hourly 10–90% quantiles"],"t142":["Persistência 24 h","24h Persistence"],"t143":["Persistência 0h","00h Persistence"],"t144":["50 µg/m³ (PI-2)","50 µg/m³ (PI-2)"],"t145":["125 µg/m³ (Atenção)","125 µg/m³ (Attention)"],"t146":["↑ pico do CAMS + viés 7 d cortado em 340 (chega a 585 µg/m³)","↑ CAMS+7d peak capped at 340 (reaches 585 µg/m³)"],"t147":["↑ a persistência 0h chega a 394 µg/m³ em 29/08 (eixo cortado em 340)","↑ 00h persistence reaches 394 µg/m³ on 29 Aug (axis cut at 340)"],"t148":["<strong>Como ler:<\/strong> a linha é a média das medianas horárias, que tende a ficar abaixo da média diária prevista quando o PM2.5 é assimétrico à direita. A faixa é a média dos quantis horários de 10% e 90%: só ilustra a dispersão e é mais larga que um intervalo de 80% da média diária. A cobertura (à direita) foi medida hora a hora, em 9.351 horas. A persistência 0h repete o único valor da meia-noite no dia inteiro e pode passar da média do dia (394 µg/m³ em 29/08).","<strong>How to read it:<\/strong> the line is the mean of the hourly medians, which tends to sit below the forecast daily mean when PM2.5 is right-skewed. The band is the mean of the hourly 10% and 90% quantiles: it only illustrates the spread and is wider than an 80% interval for the daily mean. Coverage (right) was measured hour by hour, over 9,351 hours. The 00h persistence repeats the single midnight value for the whole day, so it can exceed the daily mean (394 µg/m³ on 29 Aug)."],"t149":["Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>) · Powered by PurpleAir.","Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>) · Powered by PurpleAir."],"t150":["Com que frequência a faixa de 10% a 90% conteve a hora medida","How often the 10–90% band held the measured hour"],"t151":["Meta: 80% · regime pela média das 24 h anteriores","Target: 80% · regime by the mean of the previous 24 h"],"t152":["Rede principal · 2024 inteiro","Main network · all of 2024"],"t153":["Rede principal · seca, 24 h anteriores ≤ 50","Main network · dry season, previous 24 h ≤ 50"],"t154":["Rede principal · seca, 24 h anteriores &gt; 50","Main network · dry season, previous 24 h &gt; 50"],"t155":["Rede principal · seca","Main network · dry season"],"t156":["M2 + ERA5 · seca","M2 + ERA5 · dry season"],"t157":["M2 + ERA5 · seca, 24 h anteriores &gt; 50","M2 + ERA5 · dry season, previous 24 h &gt; 50"],"t158":["XGBoost M2 + ERA5 · seca","XGBoost M2 + ERA5 · dry season"],"t159":["<strong>Medido:<\/strong> a faixa da rede principal conteve <strong>81,7%<\/strong> das horas quando as 24 h anteriores tiveram média de até 50 µg/m³, perto da meta de 80%, e <strong>70,6%<\/strong> quando a média passou de 50. Nos dias poluídos, a faixa ficou estreita demais.","<strong>Measured:<\/strong> the main network's band held <strong>81.7%<\/strong> of the hours when the previous 24 h averaged 50 µg/m³ or less, close to the 80% target, and <strong>70.6%<\/strong> when they averaged more than 50. On polluted days the band was too narrow."],"t162":["4 sensores novos em 3 locais: 2 urbanos + 1 rural (~88 km)","4 new sensors at 3 sites: 2 urban + 1 rural (~88 km)"],"t164":["Sensores que nunca entraram no treino, 2024 (MAE, µg/m³)","Sensors never used in training, 2024 (MAE, µg/m³)"],"t165":["Mesmos modelos, sem novo treino","Same models, no retraining"],"t166":["Locais (pares)","Sites (pairs)"],"t167":["Persist. 0h","Persist. 00h"],"t168":["Sensores do treino (197)","Training sensors (197)"],"t169":["Urbanos novos, 3 sensores (217)","New urban, 3 sensors (217)"],"t170":["Cuniã, rural, ~88 km (64)","Rural Cuniã, ~88 km (64)"],"t171":["No conjunto dos três sensores urbanos novos, a persistência teve erro menor que o da rede; na Cuniã, os dois ficaram próximos. Nenhuma dessas diferenças foi significativa no teste de Diebold–Mariano com correção de Holm (rede principal contra a persistência: p_Holm = 0,27 nos urbanos e 0,88 na Cuniã). Para comparar: dois sensores urbanos novos no mesmo local (219981 e 225327, 43 pares) diferiram entre si em <strong>30,9 µg/m³<\/strong> (MAE).","Pooled over the three new urban sensors, persistence had a lower error than the network; at Cuniã the two were close. None of these differences was significant in the Diebold–Mariano test with Holm correction (main network against persistence: p_Holm = 0.27 urban, 0.88 at Cuniã). For scale: two co-located new urban sensors (219981 and 225327, 43 pairs) differed from each other by <strong>30.9 µg/m³<\/strong> (MAE)."],"t179":["Limites, agrupados por nível de evidência","Limits, grouped by level of evidence"],"t180":["Medido · do desenho · não testado","Measured · by design · not tested"],"t181":["<strong>O alvo é um sensor de baixo custo corrigido:<\/strong> não foi encontrada colocalização publicada de PurpleAir com monitor de referência na Amazônia brasileira. Com fumaça, nos EUA, a correção teve RMSE normalizado de até 40% nas médias diárias e 55% nas horárias; só 5 de 15 locais atingiram as metas horárias da EPA (Barkjohn et al., 2022).","<strong>The target is a corrected low-cost sensor:<\/strong> no published collocation of PurpleAir with a reference monitor in the Brazilian Amazon was found. Under smoke in the USA, the correction had a normalized RMSE of up to 40% on daily and 55% on hourly means; only 5 of 15 sites met the EPA hourly targets (Barkjohn et al., 2022)."],"t182":["<strong>Pouco dado:<\/strong> 2 sensores de treino, com cobertura parcial em alguns anos; os sensores urbanos ficam a até ~5 km uns dos outros.","<strong>Little data:<\/strong> 2 training sensors with partial coverage in some years; the urban sensors lie within ~5 km of each other."],"t183":["<strong>Faixa estreita demais nos dias poluídos:<\/strong> cobertura horária de 70,6% (rede principal) e 56,7% (M2 + ERA5) quando as 24 h anteriores tiveram média acima de 50 µg/m³.","<strong>Band too narrow on polluted days:<\/strong> hourly coverage of 70.6% (main network) and 56.7% (M2 + ERA5) when the previous 24 h averaged more than 50 µg/m³."],"t184":["<strong>Entradas de fogo:<\/strong> acrescentar 60 entradas do FIRMS (M3) aumentou o erro na validação cruzada em todas as famílias de modelo.","<strong>Fire inputs:<\/strong> adding 60 FIRMS inputs (M3) raised the cross-validation error in every model family."],"t185":["Do desenho","By Design"],"t186":["<strong>Fora da amostra, mas não cego:<\/strong> as médias diárias de 2024 tinham sido vistas numa conferência preliminar, por isso o teste de 2024 é exploratório (Mertens &amp; Krypotos, 2019). O teste confirmatório usa os dados selados de 2026.","<strong>Out of sample, not blind:<\/strong> 2024 daily means had been seen in a preliminary check, so the 2024 test is exploratory (Mertens &amp; Krypotos, 2019). The confirmatory test is the sealed 2026 data."],"t187":["<strong>O ERA5 é um limite superior:<\/strong> usa o tempo que de fato aconteceu, não uma previsão.","<strong>ERA5 is an upper bound:<\/strong> it uses the weather that actually happened, not a forecast."],"t188":["<strong>Uma só correção:<\/strong> esta entrega usa apenas Barkjohn et al. (2022); a sensibilidade a outras correções (Barkjohn 2021, AirNow) não foi avaliada aqui.","<strong>One correction only:<\/strong> this delivery uses Barkjohn et al. (2022) only; sensitivity to other corrections (Barkjohn 2021, AirNow) was not evaluated here."],"t189":["Hipótese · não testada","Hypothesis · Untested"],"t190":["<strong>Por que as entradas de fogo não ajudaram:<\/strong> o histórico de PM2.5 pode já carregar o efeito do fogo próximo; o satélite vê cada foco só duas vezes por dia; os anéis de distância não dizem quando a fumaça chega; os hiperparâmetros fixos podem ser fracos para 83 entradas.","<strong>Why fire inputs did not help:<\/strong> the PM2.5 history may already carry the effect of nearby fires; the satellite sees each fire only twice a day; distance rings do not tell when the smoke arrives; fixed hyperparameters may be too weak for 83 inputs."],"t191":["<strong>A correção pode errar mais aqui:<\/strong> a fumaça amazônica (higroscopicidade κ ≈ 0,10–0,17) e a umidade de 95–100% perto do amanhecer diferem dos locais dos EUA. Só uma colocalização, como com a estação FioAres, pode medir isso.","<strong>The correction may err more here:<\/strong> Amazonian smoke (hygroscopicity κ ≈ 0.10–0.17) and 95–100% humidity near dawn differ from the US sites. Only a collocation, such as with the FioAres station, can measure it."],"t192":["<strong>Quanto do viés de −28 µg/m³ vem de prever a mediana<\/strong> de um PM2.5 assimétrico à direita não foi medido.","<strong>How much of the −28 µg/m³ bias comes from forecasting a median<\/strong> of right-skewed PM2.5 was not measured."],"t193":["<strong>Trabalhos anteriores:<\/strong> Jang &amp; Jung (2023) caracterizaram o PM2.5 de Porto Velho com PurpleAir (2020–2022); Nassarden et al. (2025) viram o CAMS superestimar o PM2.5 medido em Humaitá (AM), a cerca de 200 km.","<strong>Prior work:<\/strong> Jang &amp; Jung (2023) characterized PM2.5 in Porto Velho with PurpleAir (2020–2022); Nassarden et al. (2025) found that CAMS overestimated measured PM2.5 in Humaitá (Amazonas), about 200 km away."],"t194":["Atribuição dos dados e aviso obrigatório de saúde e emergência (termos da PurpleAir, §4.8 e §7.3):","Data Attribution &amp; Mandatory Health/Emergency Disclaimer (PurpleAir Terms §4.8 &amp; §7.3):"],"t195":["Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>). As previsões deste projeto são <strong>Powered by PurpleAir<\/strong>.","Data from PurpleAir (<a href=\"https://www.purpleair.com\" target=\"_blank\" rel=\"noopener\">purpleair.com<\/a>). The forecasts of this project are <strong>Powered by PurpleAir<\/strong>."],"t196":["Este repositório e esta página apresentam uma pesquisa acadêmica: as previsões e as avaliações de limiares não garantem exatidão nem disponibilidade em nenhum contexto de saúde ou emergência e não devem ser usadas em decisões médicas, de saúde pública ou de resposta a queimadas.","This repository and page present an academic research benchmark: its forecasts and threshold evaluations do not warrant accuracy or availability in any health or emergency context and must not be used for medical, public-health, or wildfire-response decisions."],"t197":["Outras fontes de dados: reanálise ERA5 (Copernicus Climate Change Service) · previsão global de composição atmosférica do CAMS (Copernicus Atmosphere Monitoring Service) · focos ativos VIIRS NOAA-20 (NASA FIRMS). Os dados brutos e os pesos treinados não são redistribuídos; para reproduzir, use suas chaves de API com os scripts de <code>src/ingest/<\/code>.","Additional data sources: ERA5 reanalysis (Copernicus Climate Change Service) · CAMS global atmospheric composition forecast (Copernicus Atmosphere Monitoring Service) · VIIRS NOAA-20 active fires (NASA FIRMS). Raw data and trained weights are not redistributed; reproduce via API keys using scripts in <code>src/ingest/<\/code>."],"t198":["Código: licença MIT ·","Code: MIT License ·"]};
+  var lang = "pt";
+  function tr(pt, en) { return lang === "pt" ? pt : en; }
+  function num(v, d) { var t = v.toFixed(d); return lang === "pt" ? t.replace(".", ",") : t; }
+  function numStr(t) { return lang === "pt" ? t.replace(/(\d)\.(\d)/g, "$1,$2") : t; }
+
+  /* METRICS: MAE por hora de antecedência, seca de 2024, 197 pares comuns a todos os modelos */
+  var METRICS = {"n_pares":197,"n_emissoes":99,"hor_mae":{"bilstm_M1_sem":[21.19,29.74,33.06,36.45,40.1,41.53,46.67,50.42,47.5,39.89,35.78,31.44,26.58,23.8,23.01,22.11,21.8,20.44,21.01,24.03,24.98,28.12,32.83,34.32,37.45,42.1,45.64,47.94,51.93,53.74,58.49,62.23,59.19,51.15,45.77,40.17,34.82,31.53,30.32,29.15,28.94,27.05,27.5,30.4,31.72,34.93,39.09,40.96],"bilstm_M2_era5":[33.69,37.35,40.43,43.79,48.11,48.98,53.54,57.11,53.82,46.22,42.06,36.53,31.69,28.49,27.35,26.15,25.38,23.67,23.95,26.11,27.11,30.97,34.72,35.59,39.56,42.93,46.53,49.34,53.26,53.92,57.94,61.14,57.27,49.47,44.81,39.07,33.65,30.07,28.91,27.64,26.99,25.22,25.38,27.88,28.76,32.39,35.79,36.77],"persistencia_-_-":[15.65,22.44,26.9,32.76,35.67,36.37,38.83,40.68,38.12,33.31,32.37,31.27,29.56,29.66,30.91,32.24,32.86,33.49,33.01,32.51,31.65,35.01,37.45,38.88,37.64,42.32,43.09,44.81,47.43,49.98,53.7,56.24,53.03,45.5,43.62,40.67,38.14,36.84,36.28,35.72,36.18,36.76,36.34,35.87,36.06,39.64,43.07,45.55],"cams_vies_N7_-":[38.72,42.46,39.73,40.2,42.75,43.64,45.43,47.3,44.51,37.96,34.88,29.55,24.55,22.68,22.5,22.44,24.2,30.71,33.52,32.62,34.58,39.39,39.82,39.84,41.52,45.93,46.9,48.81,52.32,53.69,56.58,58.12,53.37,44.0,39.09,32.07,25.53,23.47,22.16,21.55,22.41,24.74,26.38,27.61,31.22,36.79,41.72,45.12],"cams_bruto_-_-":[42.93,47.72,52.05,57.11,62.17,63.47,67.59,69.25,62.6,53.56,47.64,39.75,32.49,28.68,27.32,25.8,24.73,23.03,24.66,27.87,30.81,36.12,41.96,44.63,49.48,54.76,59.62,63.79,68.04,69.2,73.28,75.72,69.93,61.13,54.31,46.05,39.13,35.22,33.93,32.67,31.92,28.95,29.33,32.83,35.93,41.04,46.13,48.75]}};
+
+  var root = document.documentElement;
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* 1. Tema claro por padrão, com alternância opcional para escuro */
+  var themeMeta = document.querySelector('meta[name="color-scheme"]');
+  var themeBtn = document.getElementById("themeToggle");
+  function applyTheme(mode, persist) {
+    var dark = mode === "dark";
+    if (themeMeta) themeMeta.content = dark ? "dark" : "light";
+    if (dark) root.setAttribute("data-theme", "dark");
+    else root.removeAttribute("data-theme");
+    themeBtn.setAttribute("aria-pressed", String(dark));
+    if (persist) {
+      try {
+        if (dark) localStorage.setItem("color-scheme", "dark");
+        else localStorage.removeItem("color-scheme");
+      } catch (e) {}
+    }
+  }
+  applyTheme(root.getAttribute("data-theme") === "dark" ? "dark" : "light", false);
+  themeBtn.addEventListener("click", function () {
+    applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark", true);
+  });
+  window.addEventListener("storage", function (e) {
+    if (e.key === "color-scheme") applyTheme(e.newValue === "dark" ? "dark" : "light", false);
+  });
+
+  /* 2. Seções: trilho lateral, modo slides e teclado */
+  var stages = Array.from(document.querySelectorAll(".stage"));
+  var navLinks = Array.from(document.querySelectorAll(".rail-nav a"));
+  var snapBtn = document.getElementById("snapToggle");
+  var bar = document.getElementById("railBar");
+  var activeIdx = 0;
+
+  function setActive(idx) {
+    activeIdx = Math.max(0, Math.min(stages.length - 1, idx));
+    navLinks.forEach(function (a, i) { a.setAttribute("aria-current", i === activeIdx ? "true" : "false"); });
+    var cur = navLinks[activeIdx];
+    if (cur && cur.parentElement.scrollWidth > cur.parentElement.clientWidth) {
+      cur.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+
+  function goTo(idx) {
+    var target = stages[Math.max(0, Math.min(stages.length - 1, idx))];
+    if (!target) return;
+    target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    target.focus({ preventScroll: true });
+    setActive(idx);
+  }
+
+  snapBtn.addEventListener("click", function () {
+    var next = root.getAttribute("data-deck") !== "true";
+    root.setAttribute("data-deck", next ? "true" : "false");
+    snapBtn.setAttribute("aria-pressed", String(next));
+    if (next) goTo(activeIdx);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+    var inWidget = tag === "input" || tag === "button" || tag === "a" ||
+      (e.target && e.target.closest && e.target.closest(".table-wrapper, .tw"));
+    if (e.key === "s" || e.key === "S") {
+      if (!inWidget) { e.preventDefault(); snapBtn.click(); }
+      return;
+    }
+    if (inWidget && (e.key === "ArrowLeft" || e.key === "ArrowRight")) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); goTo(activeIdx + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); goTo(activeIdx - 1); }
+  });
+
+  var spy = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) setActive(stages.indexOf(entry.target));
+    });
+  }, { rootMargin: "-40% 0px -55% 0px", threshold: 0 });
+  stages.forEach(function (s) { spy.observe(s); });
+
+  function progress() {
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (max > 0 ? Math.min(100, window.scrollY / max * 100) : 0) + "%";
+  }
+  window.addEventListener("scroll", progress, { passive: true });
+  progress();
+
+  /* 3. Fig. 5: mostrar ou ocultar o limite superior (ERA5) */
+  var filterBtns = Array.from(document.querySelectorAll("[data-filter]"));
+  var benchRows = Array.from(document.querySelectorAll("#benchBody tr"));
+  filterBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var mode = btn.getAttribute("data-filter");
+      filterBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+      benchRows.forEach(function (row) { row.hidden = (mode === "op" && row.getAttribute("data-kind") === "ub"); });
+    });
+  });
+
+  /* 4. Fig. 6: diferenças de MAE com IC 95% (Diebold–Mariano) */
+  var dmData = [
+    { name: ["Persistência (0h)", "Persistence (00h)"], d: -1.18, lo: -6.02, hi: 3.66, dm: -0.48, p: "0.629", ph: "1.000", sig: false },
+    { name: ["CAMS + viés 7 d", "CAMS + 7d bias"], d: -0.77, lo: -6.65, hi: 5.10, dm: -0.26, p: "0.795", ph: "1.000", sig: false },
+    { name: ["Persistência (24 h)", "Persistence (24h)"], d: -5.56, lo: -11.34, hi: 0.23, dm: -1.91, p: "0.060", ph: "0.179", sig: false },
+    { name: ["Ridge (M1)", "Ridge (M1)"], d: -4.31, lo: -6.36, hi: -2.26, dm: -4.17, p: "6.6e-5", ph: "0.0005", sig: true },
+    { name: ["XGBoost (M2)", "XGBoost (M2)"], d: -7.49, lo: -11.79, hi: -3.20, dm: -3.46, p: "0.0008", ph: "0.0032", sig: true },
+    { name: ["CAMS bruto", "Raw CAMS forecast"], d: -9.80, lo: -14.50, hi: -5.09, dm: -4.13, p: "7.6e-5", ph: "0.0005", sig: true },
+    { name: ["Climatologia", "Climatology"], d: -19.09, lo: -28.52, hi: -9.66, dm: -4.02, p: "0.0001", ph: "0.0006", sig: true }
+  ];
+
+  function mkFactory(NS) {
+    return function (tag, attrs, text) {
+      var e = document.createElementNS(NS, tag);
+      for (var k in attrs) e.setAttribute(k, attrs[k]);
+      if (text != null) e.textContent = text;
+      return e;
+    };
+  }
+
+  function renderDmForest() {
+    var svg = document.getElementById("dmForest");
+    var readout = document.getElementById("dmReadout");
+    var mk = mkFactory("http://www.w3.org/2000/svg");
+    svg.innerHTML = "";
+    var W = 490, H = 250, L = 138, R = 22, T = 12, B = 38;
+    var rowH = (H - T - B) / dmData.length;
+    function sx(v) { return L + (v - (-30)) / (10 - (-30)) * (W - L - R); }
+
+    [-30, -20, -10, 0, 10].forEach(function (tk) {
+      var xx = sx(tk);
+      svg.appendChild(mk("line", { x1: xx, x2: xx, y1: T, y2: H - B + 3, class: tk === 0 ? "svg-axis" : "svg-grid" }));
+      svg.appendChild(mk("text", { x: xx, y: H - B + 16, "text-anchor": "middle", class: "svg-tick" }, tk > 0 ? "+" + tk : String(tk)));
+    });
+    svg.appendChild(mk("text", { x: L, y: H - 5, "text-anchor": "start", class: "svg-unit" }, tr("← rede principal com menor erro", "← main network lower error")));
+    svg.appendChild(mk("text", { x: W - R, y: H - 5, "text-anchor": "end", class: "svg-unit" }, tr("referência com menor erro →", "baseline lower error →")));
+
+    dmData.forEach(function (r, i) {
+      var yy = T + i * rowH + rowH / 2;
+      var col = r.sig ? "var(--m1)" : "var(--ns)";
+      var g = mk("g", { tabindex: "0", style: "cursor:pointer" });
+      var bg = mk("rect", { x: 2, y: T + i * rowH + 1, width: W - 4, height: rowH - 2, fill: "transparent" });
+      g.appendChild(bg);
+      g.appendChild(mk("text", { x: L - 8, y: yy + 3.5, "text-anchor": "end", class: "svg-tick", style: "fill:var(--ink)" }, tr(r.name[0], r.name[1])));
+      g.appendChild(mk("line", { x1: sx(r.lo), x2: sx(r.hi), y1: yy, y2: yy, stroke: col, "stroke-width": 2.2 }));
+      g.appendChild(mk("rect", { x: sx(r.d) - 4.5, y: yy - 4.5, width: 9, height: 9, fill: r.sig ? col : "var(--paper)", stroke: col, "stroke-width": 2 }));
+      function show() {
+        bg.setAttribute("fill", "var(--panel-alt)");
+        readout.textContent = tr("Rede principal − ", "Main network − ") + tr(r.name[0], r.name[1]) +
+          tr(": diferença de MAE = ", ": ΔMAE = ") + (r.d > 0 ? "+" : "") + num(r.d, 2) +
+          tr(" µg/m³ (IC 95% [", " µg/m³ (95% CI [") + num(r.lo, 2) + tr("; ", ", ") + (r.hi > 0 ? "+" : "") + num(r.hi, 2) +
+          "]) · DM = " + num(r.dm, 2) + " · p_Holm = " + numStr(r.ph) +
+          (r.sig ? tr(" (significativo)", " (significant)") : tr(" (não significativo)", " (not significant)"));
+      }
+      function hide() { bg.setAttribute("fill", "transparent"); }
+      g.addEventListener("mouseenter", show);
+      g.addEventListener("focus", show);
+      g.addEventListener("mouseleave", hide);
+      g.addEventListener("blur", hide);
+      svg.appendChild(g);
+    });
+  }
+  renderDmForest();
+
+  /* 5. Fig. 7: MAE em cada hora depois da previsão */
+  var SERIES_META = [
+    { key: "bilstm_M1_sem", label: ["M1 (principal)", "M1 (main)"], color: "var(--m1)", dash: "", width: 2.4 },
+    { key: "bilstm_M2_era5", label: ["M2 (ERA5)", "M2 (ERA5)"], color: "var(--m2)", dash: "", width: 1.8 },
+    { key: "persistencia_-_-", label: ["Persistência", "Persistence"], color: "var(--pers)", dash: "", width: 1.8 },
+    { key: "cams_vies_N7_-", label: ["CAMS + viés 7 d", "CAMS + 7d bias"], color: "var(--cams)", dash: "6 3", width: 1.7 },
+    { key: "cams_bruto_-_-", label: ["CAMS bruto", "Raw CAMS"], color: "var(--cams-raw)", dash: "2.5 3", width: 1.7 }
+  ];
+  var visibleHor = { "bilstm_M1_sem": true, "bilstm_M2_era5": true, "persistencia_-_-": true, "cams_vies_N7_-": true, "cams_bruto_-_-": true };
+  function clock(h) { var hr = h % 24; return (hr < 10 ? "0" + hr : String(hr)) + ":00"; }
+  function fmtAmt(h) { return (h <= 24 ? tr("dia 1, ", "day 1, ") : tr("dia 2, ", "day 2, ")) + clock(h) + " local"; }
+
+  function renderHorAbs() {
+    var svg = document.getElementById("horAbsSvg");
+    var readout = document.getElementById("horAbsReadout");
+    var mk = mkFactory("http://www.w3.org/2000/svg");
+    svg.innerHTML = "";
+    var W = 1120, H = 290, L = 48, R = 18, T = 26, B = 44;
+    function sx(h) { return L + (h - 1) / 47 * (W - L - R); }
+    function sy(v) { return (H - B) - (v / 80) * (H - B - T); }
+
+    [0, 20, 40, 60, 80].forEach(function (tk) {
+      var yy = sy(tk);
+      svg.appendChild(mk("line", { x1: L, x2: W - R, y1: yy, y2: yy, class: "svg-grid" }));
+      svg.appendChild(mk("text", { x: L - 8, y: yy + 3.5, "text-anchor": "end", class: "svg-tick" }, String(tk)));
+    });
+    svg.appendChild(mk("text", { x: 8, y: 13, "text-anchor": "start", class: "svg-unit" }, "MAE (µg/m³)"));
+    [1, 8, 12, 18, 24, 32, 36, 42, 48].forEach(function (h) {
+      var xx = sx(h);
+      svg.appendChild(mk("line", { x1: xx, x2: xx, y1: H - B, y2: H - B + 4, class: "svg-axis" }));
+      svg.appendChild(mk("text", { x: xx, y: H - B + 16, "text-anchor": "middle", class: "svg-tick" }, "+" + h + " h"));
+      svg.appendChild(mk("text", { x: xx, y: H - B + 30, "text-anchor": "middle", class: "svg-unit" }, clock(h)));
+    });
+    svg.appendChild(mk("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "svg-axis" }));
+
+    SERIES_META.forEach(function (m) {
+      if (!visibleHor[m.key]) return;
+      var d = METRICS.hor_mae[m.key].map(function (v, i) {
+        return (i === 0 ? "M" : "L") + sx(i + 1).toFixed(1) + "," + sy(v).toFixed(1);
+      }).join("");
+      var attrs = { d: d, fill: "none", stroke: m.color, "stroke-width": m.width, "stroke-linejoin": "round" };
+      if (m.dash) attrs["stroke-dasharray"] = m.dash;
+      svg.appendChild(mk("path", attrs));
+    });
+
+    var guide = mk("line", { x1: sx(8), x2: sx(8), y1: T, y2: H - B, stroke: "var(--ink)", "stroke-width": 1, "stroke-dasharray": "2 2", opacity: 0 });
+    svg.appendChild(guide);
+    var overlay = mk("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent", style: "cursor:crosshair" });
+    overlay.addEventListener("mousemove", function (e) {
+      var pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      var loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+      var h = Math.max(1, Math.min(48, Math.round(1 + (loc.x - L) / (W - L - R) * 47)));
+      guide.setAttribute("x1", sx(h)); guide.setAttribute("x2", sx(h)); guide.setAttribute("opacity", "0.55");
+      var parts = SERIES_META.filter(function (m) { return visibleHor[m.key]; }).map(function (m) {
+        return tr(m.label[0], m.label[1]) + ": " + num(METRICS.hor_mae[m.key][h - 1], 1);
+      });
+      readout.textContent = "+" + h + " h (" + fmtAmt(h) + tr("), MAE em µg/m³: ", "), MAE in µg/m³: ") + parts.join(" · ");
+    });
+    overlay.addEventListener("mouseleave", function () { guide.setAttribute("opacity", "0"); });
+    svg.appendChild(overlay);
+  }
+  document.querySelectorAll("#horSeriesToggles input").forEach(function (cb) {
+    cb.addEventListener("change", function () { visibleHor[cb.value] = cb.checked; renderHorAbs(); });
+  });
+  renderHorAbs();
+
+  /* 6. Fig. 8: camadas da série diária */
+  document.querySelectorAll("#trajLayerToggles input").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var g = document.getElementById(cb.getAttribute("data-target"));
+      if (g) g.style.display = cb.checked ? "" : "none";
+    });
+  });
+
+  /* 7. Idioma (pt-BR por padrão) e separador decimal */
+  var langBtn = document.getElementById("langToggle");
+  var decimalsPt = false;
+  function swapDecimals(toPt) {
+    document.querySelectorAll(".num, .kpi-val, .calib-head span, svg text, .bench-table td").forEach(function (el) {
+      if (el.closest("[data-i18n]")) return;
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      var node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement && node.parentElement.closest("[data-i18n]")) continue;
+        node.nodeValue = toPt ? node.nodeValue.replace(/(\d)\.(\d)/g, "$1,$2") : node.nodeValue.replace(/(\d),(\d)/g, "$1.$2");
+      }
+    });
+  }
+  function setLang(l) {
+    lang = l;
+    root.setAttribute("lang", l === "pt" ? "pt-BR" : "en");
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      var v = I18N[el.getAttribute("data-i18n")];
+      if (!v) return;
+      var t = l === "pt" ? v[0] : v[1];
+      if (el instanceof SVGElement) el.textContent = t.replace(/<[^>]+>/g, "");
+      else el.innerHTML = t;
+    });
+    renderHorAbs();
+    renderDmForest();
+    if ((l === "pt") !== decimalsPt) { swapDecimals(l === "pt"); decimalsPt = (l === "pt"); }
+    document.title = tr("Previsão de PM2.5 em 48 h · Porto Velho (Amazônia)", "48 h PM2.5 Forecast · Porto Velho (Brazilian Amazon)");
+    var logoEl = document.getElementById("partnersLogo");
+    if (logoEl) {
+      logoEl.alt = tr(
+        "Parceiros do Future Tech Leaders Brasil: Future Tech Leaders, Agência Espacial Brasileira (AEB), SDG AI Lab, ICPSD e UNDP",
+        "Future Tech Leaders Brasil partners: Future Tech Leaders, Brazilian Space Agency (AEB), SDG AI Lab, ICPSD, and UNDP"
+      );
+    }
+    var next = tr("Switch to English", "Mudar para português");
+    langBtn.textContent = l === "pt" ? "EN" : "PT";
+    langBtn.setAttribute("aria-label", next);
+    langBtn.setAttribute("title", next);
+  }
+  langBtn.addEventListener("click", function () { setLang(lang === "pt" ? "en" : "pt"); });
+  setLang("pt");
+})();
+</script>
+</body>
+</html>

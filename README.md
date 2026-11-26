@@ -37,7 +37,7 @@ Ridge and XGBoost: first value is the version compared with the main model, seco
 
 | Source | Role | Access |
 | :--- | :--- | :--- |
-| [PurpleAir](https://www2.purpleair.com/) low-cost sensors (6 sites: 2 for training, 3 urban and 1 rural for out-of-sample evaluation) | Target and input | Official API, read key |
+| [PurpleAir](https://www2.purpleair.com/) low-cost sensors (6 sensors at 5 sites: 2 for training; for out-of-sample evaluation, 3 urban sensors at 2 sites, two of them co-located, and 1 rural) | Target and input | Official API, read key |
 | [ERA5](https://cds.climate.copernicus.eu/) reanalysis (Copernicus) | Meteorology | Climate Data Store account |
 | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) VIIRS NOAA-20 | Fire detections and fire radiative power | MAP_KEY |
 | [CAMS global forecast](https://ads.atmosphere.copernicus.eu/) (Copernicus) | Baseline in the 2024 test | Atmosphere Data Store account and licence |
@@ -140,7 +140,7 @@ Grouped by level of evidence.
 
 **Hypotheses, not tested**
 - Why fire inputs did not help: PM2.5 history may already carry the effect of nearby fires; the satellite sees each fire only twice a day; distance to a fire does not tell when its smoke arrives; fixed hyperparameters may be too weak for 83 inputs.
-- The correction may err more in Porto Velho (different smoke and very high humidity). Only a collocation can measure it; the FioAres reference station, operating in Porto Velho since July 2026, may allow it.
+- The correction may err more in Porto Velho (different smoke and very high humidity). Only a collocation can measure it; the FioAres station, operating in Porto Velho since July 2026 (equipment and method still to be confirmed), may allow it.
 
 **Prior work.** PM2.5 in Porto Velho has been characterized with PurpleAir (Jang & Jung, 2023), and CAMS has been evaluated in the southern Amazon (Nassarden et al., 2025). Public PM2.5 forecasts for the city exist (CAMS, via VigiAR and AlertAr Saúde; CPTEC/INPE) but, as far as our search reached, none had been evaluated against local measurements.
 
